@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google OAuth Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .button {
+        background: #4285f4;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        margin: 10px 0;
+      }
+      .button:hover {
+        background: #3367d6;
+      }
+      .info {
+        background: #e3f2fd;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+      .error {
+        background: #ffebee;
+        color: #c62828;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Google OAuth Test</h1>
+
+      <div class="info">
+        <h3>How to Test:</h3>
+        <ol>
+          <li>Click "Start Google OAuth" below</li>
+          <li>You'll be redirected to Google for authentication</li>
+          <li>Complete the Google authentication</li>
+          <li>You'll be redirected back to your React app</li>
+          <li>Check the backend logs for debugging info</li>
+        </ol>
+      </div>
+
+      <button class="button" onclick="startGoogleOAuth()">
+        Start Google OAuth
+      </button>
+
+      <div class="info">
+        <h3>Expected Flow:</h3>
+        <p><strong>1.</strong> Click button → Redirect to Google</p>
+        <p><strong>2.</strong> Google authentication → Redirect to callback</p>
+        <p>
+          <strong>3.</strong> Backend stores Google data → Redirect to success
+        </p>
+        <p><strong>4.</strong> Frontend fetches data → Show onboarding</p>
+      </div>
+
+      <div class="error">
+        <h3>Common Issues:</h3>
+        <p><strong>❌ Don't:</strong> Access success URL directly</p>
+        <p><strong>✅ Do:</strong> Start from Google OAuth endpoint</p>
+      </div>
+    </div>
+
+    <script>
+      function startGoogleOAuth() {
+        console.log("Starting Google OAuth flow...");
+        window.location.href = "http://localhost:5000/api/auth/google";
+      }
+    </script>
+  </body>
+</html>

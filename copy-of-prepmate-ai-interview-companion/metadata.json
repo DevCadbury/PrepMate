@@ -1,0 +1,8 @@
+{
+  "name": "Copy of PrepMate AI Interview Companion",
+  "description": "An intuitive and engaging AI Companion interview page to help you practice and improve your interview skills. Features a conversational AI avatar, live audio interaction, and real-time performance feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
