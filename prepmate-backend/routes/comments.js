@@ -3,7 +3,7 @@ const router = express.Router();
 const Comment = require("../models/Comment");
 const Post = require("../models/Post");
 const User = require("../models/User");
-const authenticateToken = require("../middleware/auth");
+const { authenticateToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
 
 // @desc    Get comments for a post

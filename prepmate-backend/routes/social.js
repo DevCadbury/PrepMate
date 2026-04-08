@@ -53,6 +53,25 @@ const detectLanguage = (code) => {
 
 const router = express.Router();
 
+const hasUserId = (list, userId) => {
+  if (!Array.isArray(list) || !userId) return false;
+  const target = userId.toString();
+  return list.some((id) => id.toString() === target);
+};
+
+const isBlockedBetweenUsers = (currentUser, targetUser) => {
+  if (!currentUser || !targetUser) return false;
+  const currentUserId = currentUser._id || currentUser.id;
+  const targetUserId = targetUser._id || targetUser.id;
+
+  return (
+    hasUserId(currentUser.blockedUsers, targetUserId) ||
+    hasUserId(currentUser.blockedBy, targetUserId) ||
+    hasUserId(targetUser.blockedUsers, currentUserId) ||
+    hasUserId(targetUser.blockedBy, currentUserId)
+  );
+};
+
 // Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -426,12 +445,28 @@ router.get(
         });
       }
 
-      const isFollowing = currentUser.following.includes(userId);
-      const isFollower = targetUser.followers.includes(currentUserId);
-      const hasRequestSent =
-        targetUser.followRequests?.includes(currentUserId) || false;
+      if (isBlockedBetweenUsers(currentUser, targetUser)) {
+        return res.json({
+          success: true,
+          data: {
+            isFollowing: false,
+            isFollower: false,
+            hasRequestSent: false,
+            canFollow: false,
+            relationshipStatus: "blocked",
+            buttonText: "Blocked",
+            isPrivateAccount: false,
+            privacy: targetUser.preferences?.privacy,
+          },
+        });
+      }
+
+      const isFollowing = hasUserId(currentUser.following, userId);
+      const isFollower =
+        hasUserId(targetUser.followers, currentUserId) || isFollowing;
+      const hasRequestSent = hasUserId(targetUser.followRequests, currentUserId);
       const isPrivateAccount =
-        targetUser.privacy?.profileVisibility === "private";
+        targetUser.preferences?.privacy?.profileVisibility === "private";
 
       // Determine the relationship status
       let relationshipStatus = "none";
@@ -466,7 +501,7 @@ router.get(
           relationshipStatus,
           buttonText,
           isPrivateAccount,
-          privacy: targetUser.privacy,
+          privacy: targetUser.preferences?.privacy,
         },
       });
     } catch (error) {
@@ -511,8 +546,15 @@ router.post("/users/:userId/follow", authenticateToken, async (req, res) => {
       });
     }
 
+    if (isBlockedBetweenUsers(currentUser, userToFollow)) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot follow this user because one of you has blocked the other",
+      });
+    }
+
     // Check if already following
-    if (currentUser.following.includes(userId)) {
+    if (hasUserId(currentUser.following, userId)) {
       return res.status(400).json({
         success: false,
         message: "You are already following this user",
@@ -524,7 +566,7 @@ router.post("/users/:userId/follow", authenticateToken, async (req, res) => {
     }
 
     // Check if follow request already sent
-    if (userToFollow.followRequests?.includes(followerId)) {
+    if (hasUserId(userToFollow.followRequests, followerId)) {
       return res.status(400).json({
         success: false,
         message: "Follow request already sent",
@@ -536,14 +578,16 @@ router.post("/users/:userId/follow", authenticateToken, async (req, res) => {
     }
 
     const isPrivateAccount =
-      userToFollow.privacy?.profileVisibility === "private";
+      userToFollow.preferences?.privacy?.profileVisibility === "private";
 
     if (isPrivateAccount) {
       // For private accounts, add to follow requests instead of following directly
       if (!userToFollow.followRequests) {
         userToFollow.followRequests = [];
       }
-      userToFollow.followRequests.push(followerId);
+      if (!hasUserId(userToFollow.followRequests, followerId)) {
+        userToFollow.followRequests.push(followerId);
+      }
       await userToFollow.save();
 
       res.json({
@@ -557,10 +601,14 @@ router.post("/users/:userId/follow", authenticateToken, async (req, res) => {
       });
     } else {
       // For public accounts, follow directly
-      currentUser.following.push(userId);
+      if (!hasUserId(currentUser.following, userId)) {
+        currentUser.following.push(userId);
+      }
       await currentUser.save();
 
-      userToFollow.followers.push(followerId);
+      if (!hasUserId(userToFollow.followers, followerId)) {
+        userToFollow.followers.push(followerId);
+      }
       await userToFollow.save();
 
       res.json({
@@ -607,10 +655,17 @@ router.delete("/users/:userId/follow", authenticateToken, async (req, res) => {
       });
     }
 
+    if (isBlockedBetweenUsers(currentUser, userToUnfollow)) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot interact with this user because one of you has blocked the other",
+      });
+    }
+
     // Check if following
-    const isFollowing = currentUser.following.includes(userId);
+    const isFollowing = hasUserId(currentUser.following, userId);
     // Check if follow request sent
-    const hasRequestSent = userToUnfollow.followRequests?.includes(followerId);
+    const hasRequestSent = hasUserId(userToUnfollow.followRequests, followerId);
 
     if (!isFollowing && !hasRequestSent) {
       return res.status(400).json({
@@ -758,42 +813,84 @@ router.get("/posts/feed", authenticateToken, async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;
     const userId = req.user.id;
+    const parsedLimit = parseInt(limit);
+    const parsedPage = parseInt(page);
 
     console.log("=== GETTING FEED POSTS ===");
     console.log("User ID:", userId);
     console.log("Page:", page);
     console.log("Limit:", limit);
 
-    // Get current user to find followed users
-    const currentUser = await User.findById(userId);
-    const followedUsers = currentUser.following;
+    // Get current user to find followed users and block filters.
+    const currentUser = await User.findById(userId).select(
+      "following blockedUsers blockedBy"
+    );
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Current user not found",
+      });
+    }
 
-    // Add current user to the list to include their own posts
-    const usersToShow = [...followedUsers, userId];
+    const candidateAuthorIds = Array.from(
+      new Set([...(currentUser.following || []).map((id) => id.toString()), userId])
+    );
 
-    console.log("Users to show posts from:", usersToShow);
+    const candidateAuthors = await User.find({
+      _id: { $in: candidateAuthorIds },
+    }).select("_id preferences.privacy blockedUsers blockedBy");
 
-    const posts = await Post.find({
-      user: { $in: usersToShow },
-      visibility: { $in: ["public", "friends"] },
+    const allowedAuthorIds = candidateAuthors
+      .filter((author) => {
+        const isOwnPostAuthor = author._id.toString() === userId.toString();
+        if (isOwnPostAuthor) return true;
+
+        const isBlocked = isBlockedBetweenUsers(currentUser, author);
+        if (isBlocked) return false;
+
+        const profileVisibility =
+          author.preferences?.privacy?.profileVisibility || "public";
+        if (profileVisibility === "private") {
+          return hasUserId(currentUser.following, author._id);
+        }
+
+        return true;
+      })
+      .map((author) => author._id);
+
+    const rawPosts = await Post.find({
+      user: { $in: allowedAuthorIds },
       status: "active",
     })
       .populate("user", "name username profilePicture")
       .populate("comments.user", "name username profilePicture")
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .skip((parseInt(page) - 1) * parseInt(limit));
+      .limit(parsedLimit * 3)
+      .skip((parsedPage - 1) * parsedLimit);
 
-    console.log("Posts found:", posts.length);
-    console.log("Posts:", posts);
+    const posts = rawPosts
+      .filter((post) => {
+        const isOwnPost = post.user?._id?.toString() === userId.toString();
+        if (isOwnPost) return true;
+
+        if (post.visibility === "public") return true;
+        if (post.visibility === "friends" || post.visibility === "private") {
+          return hasUserId(currentUser.following, post.user?._id);
+        }
+
+        return false;
+      })
+      .slice(0, parsedLimit);
+
+    console.log("Posts found after visibility filter:", posts.length);
 
     res.json({
       success: true,
       data: {
         posts,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: parsedPage,
+          limit: parsedLimit,
           total: posts.length,
         },
       },
@@ -832,10 +929,39 @@ router.get("/posts/user/:userId", authenticateToken, async (req, res) => {
       });
     }
 
+    const currentUser = await User.findById(viewerId).select(
+      "following blockedUsers blockedBy"
+    );
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Current user not found",
+      });
+    }
+
+    if (isBlockedBetweenUsers(currentUser, targetUser)) {
+      return res.json({
+        success: true,
+        data: {
+          posts: [],
+          viewerPermissions: {
+            isProfileOwner: false,
+            isFollower: false,
+            canViewProfile: false,
+            canViewPosts: false,
+            hasFollowRequest: false,
+            canFollow: false,
+          },
+        },
+      });
+    }
+
     // Determine viewer relationship with profile owner
     const isProfileOwner = viewerId === userId;
-    const isFollower = targetUser.followers.includes(viewerId);
-    const hasFollowRequest = targetUser.followRequests.includes(viewerId);
+    const isFollower =
+      hasUserId(targetUser.followers, viewerId) ||
+      hasUserId(currentUser.following, userId);
+    const hasFollowRequest = hasUserId(targetUser.followRequests, viewerId);
 
     console.log("Viewer relationship:", {
       isProfileOwner,
@@ -846,6 +972,9 @@ router.get("/posts/user/:userId", authenticateToken, async (req, res) => {
     // Determine viewer permissions based on privacy settings
     const privacy = targetUser.preferences?.privacy;
     const profileVisibility = privacy?.profileVisibility || "public";
+    const isFriend =
+      hasUserId(targetUser.followers, viewerId) &&
+      hasUserId(targetUser.following, viewerId);
 
     let canViewProfile = false;
     let canViewPosts = false;
@@ -864,9 +993,6 @@ router.get("/posts/user/:userId", authenticateToken, async (req, res) => {
       canViewPosts = isFollower;
     } else if (profileVisibility === "friends") {
       // Friends-only profile
-      const isFriend =
-        targetUser.followers.includes(viewerId) &&
-        targetUser.following.includes(viewerId);
       canViewProfile = isFriend || isFollower;
       canViewPosts = isFriend || isFollower;
     }
@@ -1124,6 +1250,598 @@ router.put(
       });
     } catch (error) {
       console.error("Error updating post:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+// @desc    Like/unlike a post
+// @route   POST /api/social/posts/:postId/like
+// @access  Private
+router.post("/posts/:postId/like", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    const isLiked = post.isLikedBy(userId);
+    if (isLiked) {
+      await post.removeLike(userId);
+    } else {
+      await post.addLike(userId);
+    }
+
+    res.json({
+      success: true,
+      message: isLiked ? "Post unliked" : "Post liked",
+      data: {
+        isLiked: !isLiked,
+        likeCount: post.likes.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error toggling post like:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Bookmark/unbookmark a post
+// @route   POST /api/social/posts/:postId/bookmark
+// @access  Private
+router.post("/posts/:postId/bookmark", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    const isBookmarked = post.isBookmarkedBy(userId);
+    if (isBookmarked) {
+      await post.removeBookmark(userId);
+    } else {
+      await post.addBookmark(userId);
+    }
+
+    res.json({
+      success: true,
+      message: isBookmarked ? "Bookmark removed" : "Post bookmarked",
+      data: {
+        isBookmarked: !isBookmarked,
+        bookmarkCount: post.bookmarks.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error toggling bookmark:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Save/unsave alias for bookmark endpoint
+// @route   POST /api/social/posts/:postId/save
+// @access  Private
+router.post("/posts/:postId/save", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    const isBookmarked = post.isBookmarkedBy(userId);
+    if (isBookmarked) {
+      await post.removeBookmark(userId);
+    } else {
+      await post.addBookmark(userId);
+    }
+
+    res.json({
+      success: true,
+      message: isBookmarked ? "Post unsaved" : "Post saved",
+      data: {
+        isSaved: !isBookmarked,
+        bookmarkCount: post.bookmarks.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error toggling save:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Share a post
+// @route   POST /api/social/posts/:postId/share
+// @access  Private
+router.post("/posts/:postId/share", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const userId = req.user.id;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    await post.addShare(userId, postId);
+
+    res.json({
+      success: true,
+      message: "Post shared successfully",
+      data: {
+        shareCount: post.shares.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error sharing post:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Get comments for a post
+// @route   GET /api/social/posts/:postId/comments
+// @access  Private
+router.get("/posts/:postId/comments", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const post = await Post.findById(postId).populate(
+      "comments.user",
+      "name username profilePicture"
+    );
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    const comments = (post.comments || []).map((comment) => ({
+      ...comment.toObject(),
+      isLiked: (comment.likes || []).some(
+        (id) => id.toString() === req.user.id.toString()
+      ),
+    }));
+
+    res.json({
+      success: true,
+      comments,
+      data: { comments },
+    });
+  } catch (error) {
+    console.error("Error fetching post comments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Add comment to a post
+// @route   POST /api/social/posts/:postId/comments
+// @access  Private
+router.post("/posts/:postId/comments", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment content is required",
+      });
+    }
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    post.comments.unshift({
+      user: req.user.id,
+      content: content.trim(),
+      likes: [],
+      replies: [],
+    });
+    await post.save();
+    await post.populate("comments.user", "name username profilePicture");
+
+    const comment = post.comments[0];
+
+    res.status(201).json({
+      success: true,
+      message: "Comment added successfully",
+      comment,
+      data: { comment },
+    });
+  } catch (error) {
+    console.error("Error adding post comment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Like/unlike a comment
+// @route   POST /api/social/comments/:commentId/like
+// @access  Private
+router.post("/comments/:commentId/like", authenticateToken, async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const userId = req.user.id;
+
+    const post = await Post.findOne({ "comments._id": commentId });
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
+
+    const alreadyLiked = (comment.likes || []).some(
+      (id) => id.toString() === userId.toString()
+    );
+
+    if (alreadyLiked) {
+      comment.likes = comment.likes.filter(
+        (id) => id.toString() !== userId.toString()
+      );
+    } else {
+      comment.likes.push(userId);
+    }
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: alreadyLiked ? "Comment unliked" : "Comment liked",
+      data: {
+        commentId,
+        isLiked: !alreadyLiked,
+        likes: comment.likes.length,
+      },
+    });
+  } catch (error) {
+    console.error("Error toggling comment like:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Delete a post
+// @route   DELETE /api/social/posts/:postId
+// @access  Private
+router.delete("/posts/:postId", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    if (post.user.toString() !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to delete this post",
+      });
+    }
+
+    await Post.findByIdAndDelete(postId);
+
+    res.json({
+      success: true,
+      message: "Post deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Frontend compatibility alias for unfollow
+// @route   POST /api/social/users/:userId/unfollow
+// @access  Private
+router.post("/users/:userId/unfollow", authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const currentUserId = req.user.id;
+
+    const [currentUser, targetUser] = await Promise.all([
+      User.findById(currentUserId),
+      User.findById(userId),
+    ]);
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    currentUser.following = (currentUser.following || []).filter(
+      (id) => id.toString() !== userId
+    );
+    targetUser.followers = (targetUser.followers || []).filter(
+      (id) => id.toString() !== currentUserId
+    );
+    targetUser.followRequests = (targetUser.followRequests || []).filter(
+      (id) => id.toString() !== currentUserId
+    );
+
+    await Promise.all([currentUser.save(), targetUser.save()]);
+
+    res.json({
+      success: true,
+      message: "Successfully unfollowed user",
+    });
+  } catch (error) {
+    console.error("Error unfollow alias:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+// @desc    Frontend compatibility alias for removing follower
+// @route   POST /api/social/users/:userId/remove-follower
+// @access  Private
+router.post(
+  "/users/:userId/remove-follower",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const followerId = req.params.userId;
+      const currentUserId = req.user.id;
+
+      const [currentUser, followerUser] = await Promise.all([
+        User.findById(currentUserId),
+        User.findById(followerId),
+      ]);
+
+      if (!currentUser || !followerUser) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      currentUser.followers = (currentUser.followers || []).filter(
+        (id) => id.toString() !== followerId
+      );
+      followerUser.following = (followerUser.following || []).filter(
+        (id) => id.toString() !== currentUserId
+      );
+
+      await Promise.all([currentUser.save(), followerUser.save()]);
+
+      res.json({
+        success: true,
+        message: "Follower removed successfully",
+      });
+    } catch (error) {
+      console.error("Error removing follower:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+// @desc    Frontend compatibility alias for block user
+// @route   POST /api/social/users/:userId/block
+// @access  Private
+router.post("/users/:userId/block", authenticateToken, async (req, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    const currentUserId = req.user.id;
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot block yourself",
+      });
+    }
+
+    const [currentUser, targetUser] = await Promise.all([
+      User.findById(currentUserId),
+      User.findById(targetUserId),
+    ]);
+
+    if (!currentUser || !targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (
+      !(currentUser.blockedUsers || []).some(
+        (id) => id.toString() === targetUserId
+      )
+    ) {
+      currentUser.blockedUsers.push(targetUserId);
+    }
+
+    currentUser.following = (currentUser.following || []).filter(
+      (id) => id.toString() !== targetUserId
+    );
+    currentUser.followers = (currentUser.followers || []).filter(
+      (id) => id.toString() !== targetUserId
+    );
+    targetUser.following = (targetUser.following || []).filter(
+      (id) => id.toString() !== currentUserId
+    );
+    targetUser.followers = (targetUser.followers || []).filter(
+      (id) => id.toString() !== currentUserId
+    );
+
+    await Promise.all([currentUser.save(), targetUser.save()]);
+
+    res.json({
+      success: true,
+      message: "User blocked successfully",
+    });
+  } catch (error) {
+    console.error("Error blocking user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Accept follow request (social path alias)
+// @route   POST /api/social/users/:userId/accept-follow-request
+// @access  Private
+router.post(
+  "/users/:userId/accept-follow-request",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const requesterId = req.params.userId;
+      const currentUserId = req.user.id;
+
+      const [currentUser, requester] = await Promise.all([
+        User.findById(currentUserId),
+        User.findById(requesterId),
+      ]);
+
+      if (!currentUser || !requester) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const hasRequest = (currentUser.followRequests || []).some(
+        (id) => id.toString() === requesterId
+      );
+      if (!hasRequest) {
+        return res.status(400).json({
+          success: false,
+          message: "No follow request from this user",
+        });
+      }
+
+      currentUser.followRequests = (currentUser.followRequests || []).filter(
+        (id) => id.toString() !== requesterId
+      );
+      if (!(currentUser.followers || []).some((id) => id.toString() === requesterId)) {
+        currentUser.followers.push(requesterId);
+      }
+
+      requester.pendingFollowRequests = (requester.pendingFollowRequests || []).filter(
+        (id) => id.toString() !== currentUserId
+      );
+      if (!(requester.following || []).some((id) => id.toString() === currentUserId)) {
+        requester.following.push(currentUserId);
+      }
+
+      await Promise.all([currentUser.save(), requester.save()]);
+
+      res.json({
+        success: true,
+        message: "Follow request accepted",
+      });
+    } catch (error) {
+      console.error("Error accepting follow request:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+// @desc    Reject follow request (social path alias)
+// @route   POST /api/social/users/:userId/reject-follow-request
+// @access  Private
+router.post(
+  "/users/:userId/reject-follow-request",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const requesterId = req.params.userId;
+      const currentUserId = req.user.id;
+
+      const [currentUser, requester] = await Promise.all([
+        User.findById(currentUserId),
+        User.findById(requesterId),
+      ]);
+
+      if (!currentUser || !requester) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      currentUser.followRequests = (currentUser.followRequests || []).filter(
+        (id) => id.toString() !== requesterId
+      );
+      requester.pendingFollowRequests = (requester.pendingFollowRequests || []).filter(
+        (id) => id.toString() !== currentUserId
+      );
+
+      await Promise.all([currentUser.save(), requester.save()]);
+
+      res.json({
+        success: true,
+        message: "Follow request rejected",
+      });
+    } catch (error) {
+      console.error("Error rejecting follow request:", error);
       res.status(500).json({
         success: false,
         message: "Internal server error",

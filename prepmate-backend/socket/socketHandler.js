@@ -10,6 +10,28 @@ class SocketHandler {
     this.rooms = new Map(); // roomId -> { users: Set, type: string }
   }
 
+  hasUserId(list, userId) {
+    if (!Array.isArray(list) || !userId) return false;
+    const target = userId.toString();
+    return list.some((id) => id.toString() === target);
+  }
+
+  async isBlockedBetweenUsers(userAId, userBId) {
+    const [userA, userB] = await Promise.all([
+      User.findById(userAId).select("blockedUsers blockedBy"),
+      User.findById(userBId).select("blockedUsers blockedBy"),
+    ]);
+
+    if (!userA || !userB) return false;
+
+    return (
+      this.hasUserId(userA.blockedUsers, userBId) ||
+      this.hasUserId(userA.blockedBy, userBId) ||
+      this.hasUserId(userB.blockedUsers, userAId) ||
+      this.hasUserId(userB.blockedBy, userAId)
+    );
+  }
+
   // Initialize socket handler
   initialize(io) {
     this.io = io;
@@ -248,66 +270,108 @@ class SocketHandler {
   }
 
   // Handle video call signaling
-  handleCallOffer(socket, data) {
+  async handleCallOffer(socket, data) {
     const { recipientId, offer, roomId } = data;
     const { userId, user } = socket;
 
-    const recipientSocket = this.connectedUsers.get(recipientId);
-    if (recipientSocket) {
-      recipientSocket.emit("call_offer", {
-        callerId: userId,
-        caller: {
-          id: user.id,
-          name: user.name,
-          avatar: user.avatar,
-        },
-        offer,
-        roomId,
-      });
+    try {
+      if (await this.isBlockedBetweenUsers(userId, recipientId)) {
+        socket.emit("call_error", {
+          message:
+            "Cannot place call because one of you has blocked the other",
+        });
+        return;
+      }
+
+      const recipientSocket = this.connectedUsers.get(recipientId);
+      if (recipientSocket) {
+        recipientSocket.emit("call_offer", {
+          callerId: userId,
+          caller: {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar,
+          },
+          offer,
+          roomId,
+        });
+      }
+    } catch (error) {
+      logger.error("Error handling call offer:", error);
+      socket.emit("call_error", { message: "Failed to place call" });
     }
   }
 
-  handleCallAnswer(socket, data) {
+  async handleCallAnswer(socket, data) {
     const { callerId, answer } = data;
     const { userId, user } = socket;
 
-    const callerSocket = this.connectedUsers.get(callerId);
-    if (callerSocket) {
-      callerSocket.emit("call_answer", {
-        answererId: userId,
-        answerer: {
-          id: user.id,
-          name: user.name,
-          avatar: user.avatar,
-        },
-        answer,
-      });
+    try {
+      if (await this.isBlockedBetweenUsers(userId, callerId)) {
+        socket.emit("call_error", {
+          message:
+            "Cannot answer call because one of you has blocked the other",
+        });
+        return;
+      }
+
+      const callerSocket = this.connectedUsers.get(callerId);
+      if (callerSocket) {
+        callerSocket.emit("call_answer", {
+          answererId: userId,
+          answerer: {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar,
+          },
+          answer,
+        });
+      }
+    } catch (error) {
+      logger.error("Error handling call answer:", error);
+      socket.emit("call_error", { message: "Failed to answer call" });
     }
   }
 
-  handleCallIceCandidate(socket, data) {
+  async handleCallIceCandidate(socket, data) {
     const { recipientId, candidate } = data;
     const { userId } = socket;
 
-    const recipientSocket = this.connectedUsers.get(recipientId);
-    if (recipientSocket) {
-      recipientSocket.emit("call_ice_candidate", {
-        senderId: userId,
-        candidate,
-      });
+    try {
+      if (await this.isBlockedBetweenUsers(userId, recipientId)) {
+        return;
+      }
+
+      const recipientSocket = this.connectedUsers.get(recipientId);
+      if (recipientSocket) {
+        recipientSocket.emit("call_ice_candidate", {
+          senderId: userId,
+          candidate,
+        });
+      }
+    } catch (error) {
+      logger.error("Error handling ICE candidate:", error);
     }
   }
 
-  handleCallEnd(socket, data) {
+  async handleCallEnd(socket, data) {
     const { recipientId, reason } = data;
     const { userId } = socket;
 
-    const recipientSocket = this.connectedUsers.get(recipientId);
-    if (recipientSocket) {
-      recipientSocket.emit("call_end", {
-        senderId: userId,
-        reason,
-      });
+    try {
+      if (await this.isBlockedBetweenUsers(userId, recipientId)) {
+        return;
+      }
+
+      const recipientSocket = this.connectedUsers.get(recipientId);
+      if (recipientSocket) {
+        recipientSocket.emit("call_end", {
+          senderId: userId,
+          reason,
+        });
+      }
+    } catch (error) {
+      logger.error("Error handling call end:", error);
     }
   }
 
@@ -478,7 +542,8 @@ class SocketHandler {
 
   async handleSendMessage(socket, data) {
     try {
-      const { roomId, message, type = "text", replyTo, media } = data;
+      const { roomId, message, type = "text", replyTo, media, clientTempId } =
+        data;
       const { userId, user } = socket;
 
       // Validate message length
@@ -498,7 +563,7 @@ class SocketHandler {
       const ChatRoom = require("../models/ChatRoom");
       const chatRoom = await ChatRoom.findById(roomId);
 
-      if (!chatRoom || !chatRoom.participants.includes(userId)) {
+      if (!chatRoom || !this.hasUserId(chatRoom.participants, userId)) {
         socket.emit("error", { message: "Access denied to this chat room" });
         return;
       }
@@ -510,6 +575,14 @@ class SocketHandler {
 
       if (!receiverId) {
         socket.emit("error", { message: "Invalid chat room" });
+        return;
+      }
+
+      if (await this.isBlockedBetweenUsers(userId, receiverId)) {
+        socket.emit("error", {
+          message:
+            "Cannot send message because one of you has blocked the other",
+        });
         return;
       }
 
@@ -545,6 +618,7 @@ class SocketHandler {
 
       // Emit to sender
       socket.emit("message-sent", {
+        clientTempId: clientTempId || null,
         messageId: newMessage._id,
         message: newMessage,
       });
@@ -583,7 +657,7 @@ class SocketHandler {
     }
   }
 
-  handleTyping(socket, data) {
+  async handleTyping(socket, data) {
     const { roomId, senderId, receiverId, groupId } = data;
     const { userId, user } = socket;
 
@@ -616,6 +690,9 @@ class SocketHandler {
         "receiverSocket:",
         !!receiverSocket
       );
+      if (await this.isBlockedBetweenUsers(userId, receiverId)) {
+        return;
+      }
       if (receiverSocket) {
         receiverSocket.emit("showTyping", {
           senderId: userId,
@@ -644,7 +721,7 @@ class SocketHandler {
     );
   }
 
-  handleStopTyping(socket, data) {
+  async handleStopTyping(socket, data) {
     const { roomId, senderId, receiverId, groupId } = data;
     const { userId, user } = socket;
 
@@ -659,6 +736,9 @@ class SocketHandler {
     } else if (receiverId) {
       // Direct chat - send to specific receiver
       const receiverSocket = this.connectedUsers.get(receiverId);
+      if (await this.isBlockedBetweenUsers(userId, receiverId)) {
+        return;
+      }
       if (receiverSocket) {
         receiverSocket.emit("hideTyping", {
           senderId: userId,

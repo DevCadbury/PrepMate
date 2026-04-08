@@ -1,11 +1,38 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Message = require("../models/Message");
 const ChatRoom = require("../models/ChatRoom");
 const User = require("../models/User");
 const { authenticateToken } = require("../middleware/auth");
 // Removed asyncHandler dependency
 const logger = require("../utils/logger");
+
+const hasUserId = (list, userId) => {
+  if (!Array.isArray(list) || !userId) return false;
+  const target = userId.toString();
+  return list.some((id) => id.toString() === target);
+};
+
+const isBlockedBetweenUsers = async (userAId, userBId) => {
+  const [userA, userB] = await Promise.all([
+    User.findById(userAId).select("blockedUsers blockedBy"),
+    User.findById(userBId).select("blockedUsers blockedBy"),
+  ]);
+
+  if (!userA || !userB) {
+    return false;
+  }
+
+  return (
+    hasUserId(userA.blockedUsers, userBId) ||
+    hasUserId(userA.blockedBy, userBId) ||
+    hasUserId(userB.blockedUsers, userAId) ||
+    hasUserId(userB.blockedBy, userAId)
+  );
+};
+
+const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
 // @desc    Get chat rooms for user
 // @route   GET /api/chat/rooms
@@ -83,6 +110,13 @@ router.post("/room", authenticateToken, async (req, res) => {
       });
     }
 
+    if (await isBlockedBetweenUsers(userId, participantId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot create chat because one of you has blocked the other",
+      });
+    }
+
     // Find existing chat room or create new one
     let chatRoom = await ChatRoom.findOne({
       participants: { $all: [userId, participantId] },
@@ -111,6 +145,77 @@ router.post("/room", authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating chat room:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
+// @desc    Frontend compatibility alias for direct chat creation
+// @route   POST /api/chat/direct
+// @access  Private
+router.post("/direct", authenticateToken, async (req, res) => {
+  try {
+    const { participantId } = req.body;
+    const userId = req.user.id;
+
+    if (!participantId) {
+      return res.status(400).json({
+        success: false,
+        message: "participantId is required",
+      });
+    }
+
+    if (userId === participantId) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot create chat room with yourself",
+      });
+    }
+
+    const participant = await User.findById(participantId);
+    if (!participant) {
+      return res.status(404).json({
+        success: false,
+        message: "Participant not found",
+      });
+    }
+
+    if (await isBlockedBetweenUsers(userId, participantId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot create chat because one of you has blocked the other",
+      });
+    }
+
+    let chatRoom = await ChatRoom.findOne({
+      participants: { $all: [userId, participantId] },
+      type: "direct",
+    });
+
+    if (!chatRoom) {
+      chatRoom = new ChatRoom({
+        participants: [userId, participantId],
+        type: "direct",
+        createdBy: userId,
+      });
+      await chatRoom.save();
+    }
+
+    await chatRoom.populate(
+      "participants",
+      "name username profilePicture isOnline lastSeen"
+    );
+
+    res.json({
+      success: true,
+      data: {
+        chatRoom,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating direct chat:", error);
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -190,7 +295,7 @@ router.get("/room/:roomId/messages", authenticateToken, async (req, res) => {
 
     // Verify user is participant in this chat room
     const chatRoom = await ChatRoom.findById(roomId);
-    if (!chatRoom || !chatRoom.participants.includes(userId)) {
+    if (!chatRoom || !hasUserId(chatRoom.participants, userId)) {
       return res.status(403).json({
         success: false,
         message: "Access denied to this chat room",
@@ -237,7 +342,7 @@ router.post("/room/:roomId/messages", authenticateToken, async (req, res) => {
 
     // Verify user is participant in this chat room
     const chatRoom = await ChatRoom.findById(roomId);
-    if (!chatRoom || !chatRoom.participants.includes(userId)) {
+    if (!chatRoom || !hasUserId(chatRoom.participants, userId)) {
       return res.status(403).json({
         success: false,
         message: "Access denied to this chat room",
@@ -253,6 +358,13 @@ router.post("/room/:roomId/messages", authenticateToken, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid chat room",
+      });
+    }
+
+    if (await isBlockedBetweenUsers(userId, receiverId)) {
+      return res.status(403).json({
+        success: false,
+        message: "Cannot send message because one of you has blocked the other",
       });
     }
 
@@ -310,6 +422,13 @@ router.put("/messages/:messageId", authenticateToken, async (req, res) => {
     const { message } = req.body;
     const userId = req.user.id;
 
+    if (!isValidObjectId(messageId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid message ID",
+      });
+    }
+
     const messageDoc = await Message.findById(messageId);
     if (!messageDoc) {
       return res.status(404).json({
@@ -362,6 +481,13 @@ router.delete("/messages/:messageId", authenticateToken, async (req, res) => {
     const { deleteForEveryone = false } = req.body;
     const userId = req.user.id;
 
+    if (!isValidObjectId(messageId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid message ID",
+      });
+    }
+
     const messageDoc = await Message.findById(messageId);
     if (!messageDoc) {
       return res.status(404).json({
@@ -407,7 +533,7 @@ router.post("/room/:roomId/seen", authenticateToken, async (req, res) => {
 
     // Verify user is participant in this chat room
     const chatRoom = await ChatRoom.findById(roomId);
-    if (!chatRoom || !chatRoom.participants.includes(userId)) {
+    if (!chatRoom || !hasUserId(chatRoom.participants, userId)) {
       return res.status(403).json({
         success: false,
         message: "Access denied to this chat room",
@@ -440,6 +566,13 @@ router.post(
       const { messageId } = req.params;
       const { emoji } = req.body;
       const userId = req.user.id;
+
+      if (!isValidObjectId(messageId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid message ID",
+        });
+      }
 
       const messageDoc = await Message.findById(messageId);
       if (!messageDoc) {
@@ -483,6 +616,13 @@ router.delete(
       const { messageId } = req.params;
       const { emoji } = req.body;
       const userId = req.user.id;
+
+      if (!isValidObjectId(messageId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid message ID",
+        });
+      }
 
       const messageDoc = await Message.findById(messageId);
       if (!messageDoc) {
@@ -560,7 +700,7 @@ router.delete("/room/:roomId/clear", authenticateToken, async (req, res) => {
 
     // Verify user is participant in this chat room
     const chatRoom = await ChatRoom.findById(roomId);
-    if (!chatRoom || !chatRoom.participants.includes(userId)) {
+    if (!chatRoom || !hasUserId(chatRoom.participants, userId)) {
       return res.status(403).json({
         success: false,
         message: "Access denied to this chat room",
@@ -641,6 +781,13 @@ router.post(
       const { messageId } = req.params;
       const { reason } = req.body;
       const userId = req.user.id;
+
+      if (!isValidObjectId(messageId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid message ID",
+        });
+      }
 
       const messageDoc = await Message.findById(messageId);
       if (!messageDoc) {

@@ -302,6 +302,30 @@ const userSchema = new mongoose.Schema(
       theme: { type: String, enum: ["light", "dark", "auto"], default: "auto" },
     },
 
+    // AI Companion settings
+    aiCompanion: {
+      geminiApiKey: {
+        type: String,
+        select: false, // Exclude from default queries for security
+      },
+      selectedVoiceModel: {
+        type: String,
+        default: "en-IN-female-1", // Default to Indian female voice
+      },
+      voicePreferences: {
+        rate: { type: Number, default: 1 },
+        pitch: { type: Number, default: 1 },
+        volume: { type: Number, default: 1 },
+      },
+      isApiKeyValid: {
+        type: Boolean,
+        default: false,
+      },
+      lastApiKeyValidation: {
+        type: Date,
+      },
+    },
+
     // Analytics and metrics
     metrics: {
       totalPosts: { type: Number, default: 0 },

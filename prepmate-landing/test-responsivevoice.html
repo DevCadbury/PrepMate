@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ResponsiveVoice Hindi Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #fff;
+        }
+        .voice-test {
+            background: rgba(255, 255, 255, 0.1);
+            margin: 15px 0;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .voice-name {
+            font-weight: bold;
+            color: #ffeb3b;
+            margin-bottom: 10px;
+        }
+        .test-text {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            font-style: italic;
+        }
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin: 5px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .stop-btn {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+        }
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+        .loading {
+            color: #ffd700;
+        }
+        .ready {
+            color: #00ff88;
+        }
+        .error {
+            color: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🇮🇳 ResponsiveVoice Hindi Voice Test</h1>
+        
+        <div id="status" class="status loading">
+            🔄 Loading ResponsiveVoice...
+        </div>
+
+        <div class="voice-test">
+            <div class="voice-name">📱 Hindi Male Voice</div>
+            <div class="test-text">नमस्ते! मैं आपका हिंदी वॉयस असिस्टेंट हूं।</div>
+            <div class="test-text">English: "Hello! I am your Hindi voice assistant."</div>
+            <button onclick="testVoice('Hindi Male', 'नमस्ते! मैं आपका हिंदी वॉयस असिस्टेंट हूं।')">Play Hindi</button>
+            <button onclick="testVoice('Hindi Male', 'Hello! This is Hindi male voice speaking English with authentic accent.')">Play English</button>
+        </div>
+
+        <div class="voice-test">
+            <div class="voice-name">👩 Hindi Female Voice</div>
+            <div class="test-text">आपका स्वागत है! मैं हिंदी में बोल सकती हूं।</div>
+            <div class="test-text">English: "Welcome! I can speak in Hindi."</div>
+            <button onclick="testVoice('Hindi Female', 'आपका स्वागत है! मैं हिंदी में बोल सकती हूं।')">Play Hindi</button>
+            <button onclick="testVoice('Hindi Female', 'Welcome! This is Hindi female voice with natural pronunciation.')">Play English</button>
+        </div>
+
+        <div class="voice-test">
+            <div class="voice-name">🎭 Tamil Voice</div>
+            <div class="test-text">வணக்கம்! நான் தமிழில் பேசுகிறேன்।</div>
+            <div class="test-text">English: "Hello! I speak in Tamil."</div>
+            <button onclick="testVoice('Tamil Male', 'வணக்கம்! நான் தமிழில் பேசுகிறேன்।')">Play Tamil</button>
+            <button onclick="testVoice('Tamil Male', 'Hello! This is Tamil voice speaking English.')">Play English</button>
+        </div>
+
+        <div class="voice-test">
+            <div class="voice-name">🌟 Bengali Voice</div>
+            <div class="test-text">নমস্কার! আমি বাংলায় কথা বলি।</div>
+            <div class="test-text">English: "Hello! I speak in Bengali."</div>
+            <button onclick="testVoice('Bengali Male', 'নমস্কার! আমি বাংলায় কথা বলি।')">Play Bengali</button>
+            <button onclick="testVoice('Bengali Male', 'Hello! This is Bengali voice speaking English.')">Play English</button>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="stop-btn" onclick="stopAll()">🛑 Stop All Voices</button>
+            <button onclick="listAllVoices()">📋 List Available Voices</button>
+        </div>
+
+        <div id="voice-list" style="margin-top: 20px; font-size: 12px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; display: none;">
+            <strong>Available ResponsiveVoice Voices:</strong>
+            <div id="voices-content"></div>
+        </div>
+    </div>
+
+    <!-- ResponsiveVoice.js CDN -->
+    <script src="https://code.responsivevoice.org/responsivevoice.js?key=YOUR_API_KEY"></script>
+    
+    <script>
+        let isResponsiveVoiceReady = false;
+
+        // Wait for ResponsiveVoice to load
+        function checkResponsiveVoiceStatus() {
+            const statusEl = document.getElementById('status');
+            
+            if (typeof responsiveVoice !== 'undefined' && responsiveVoice.voiceSupport()) {
+                isResponsiveVoiceReady = true;
+                statusEl.innerHTML = '✅ ResponsiveVoice Ready! Hindi voices available.';
+                statusEl.className = 'status ready';
+                
+                // Get voice count
+                const voices = responsiveVoice.getVoices();
+                const hindiVoices = voices.filter(v => v.name.toLowerCase().includes('hindi')).length;
+                const tamilVoices = voices.filter(v => v.name.toLowerCase().includes('tamil')).length;
+                const bengaliVoices = voices.filter(v => v.name.toLowerCase().includes('bengali')).length;
+                
+                console.log(`📊 Voice Summary: ${hindiVoices} Hindi, ${tamilVoices} Tamil, ${bengaliVoices} Bengali`);
+                
+            } else {
+                statusEl.innerHTML = '⏳ Waiting for ResponsiveVoice to load...';
+                setTimeout(checkResponsiveVoiceStatus, 500);
+            }
+        }
+
+        // Test voice function
+        function testVoice(voiceName, text) {
+            if (!isResponsiveVoiceReady) {
+                alert('ResponsiveVoice is not ready yet. Please wait...');
+                return;
+            }
+
+            console.log(`🎤 Testing voice: ${voiceName}`);
+            console.log(`📝 Text: ${text}`);
+
+            // Stop any current speech
+            responsiveVoice.cancel();
+
+            // Play the voice
+            responsiveVoice.speak(text, voiceName, {
+                rate: 0.9,
+                pitch: 1,
+                volume: 0.8,
+                onstart: () => {
+                    console.log(`▶️ Started: ${voiceName}`);
+                },
+                onend: () => {
+                    console.log(`⏹️ Ended: ${voiceName}`);
+                },
+                onerror: (error) => {
+                    console.error(`❌ Error with ${voiceName}:`, error);
+                    alert(`Error playing ${voiceName}: ${error}`);
+                }
+            });
+        }
+
+        // Stop all voices
+        function stopAll() {
+            if (typeof responsiveVoice !== 'undefined') {
+                responsiveVoice.cancel();
+                console.log('🛑 All voices stopped');
+            }
+        }
+
+        // List all available voices
+        function listAllVoices() {
+            if (!isResponsiveVoiceReady) {
+                alert('ResponsiveVoice is not ready yet.');
+                return;
+            }
+
+            const voices = responsiveVoice.getVoices();
+            const voiceListEl = document.getElementById('voice-list');
+            const voicesContentEl = document.getElementById('voices-content');
+            
+            let html = '';
+            
+            // Group voices by language/region
+            const hindiVoices = voices.filter(v => v.name.toLowerCase().includes('hindi'));
+            const tamilVoices = voices.filter(v => v.name.toLowerCase().includes('tamil'));
+            const bengaliVoices = voices.filter(v => v.name.toLowerCase().includes('bengali'));
+            const indianVoices = voices.filter(v => v.name.toLowerCase().includes('indian'));
+            
+            if (hindiVoices.length > 0) {
+                html += '<br><strong>🇮🇳 Hindi Voices:</strong><br>';
+                hindiVoices.forEach(voice => {
+                    html += `• ${voice.name}<br>`;
+                });
+            }
+            
+            if (tamilVoices.length > 0) {
+                html += '<br><strong>🏛️ Tamil Voices:</strong><br>';
+                tamilVoices.forEach(voice => {
+                    html += `• ${voice.name}<br>`;
+                });
+            }
+            
+            if (bengaliVoices.length > 0) {
+                html += '<br><strong>📚 Bengali Voices:</strong><br>';
+                bengaliVoices.forEach(voice => {
+                    html += `• ${voice.name}<br>`;
+                });
+            }
+            
+            if (indianVoices.length > 0) {
+                html += '<br><strong>🌏 Indian English Voices:</strong><br>';
+                indianVoices.forEach(voice => {
+                    html += `• ${voice.name}<br>`;
+                });
+            }
+            
+            html += `<br><strong>📊 Total Available Voices: ${voices.length}</strong>`;
+            
+            voicesContentEl.innerHTML = html;
+            voiceListEl.style.display = voiceListEl.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            setTimeout(checkResponsiveVoiceStatus, 1000);
+        });
+
+        // Also check periodically in case of delayed loading
+        setTimeout(checkResponsiveVoiceStatus, 2000);
+    </script>
+</body>
+</html>

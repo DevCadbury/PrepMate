@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PrepMate API Health Check</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              prepmate: {
+                50: "#eff6ff",
+                500: "#3b82f6",
+                600: "#2563eb",
+                700: "#1d4ed8",
+                900: "#1e3a8a",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      .status-healthy {
+        background: linear-gradient(135deg, #10b981, #059669);
+      }
+      .status-warning {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+      }
+      .status-unhealthy {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+      }
+      .pulse-animation {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+      }
+    </style>
+  </head>
+  <body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-white mb-2">PrepMate API</h1>
+        <h2 class="text-2xl font-semibold text-gray-300">
+          Health Check Dashboard
+        </h2>
+        <p class="text-gray-400 mt-2">
+          Real-time system status and performance metrics
+        </p>
+      </div>
+
+      <!-- Overall Status -->
+      <div id="overall-status" class="mb-8">
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold">Overall System Status</h3>
+            <div id="status-indicator" class="flex items-center space-x-2">
+              <div
+                id="status-dot"
+                class="w-3 h-3 rounded-full pulse-animation"
+              ></div>
+              <span id="status-text" class="text-sm font-medium"
+                >Loading...</span
+              >
+            </div>
+          </div>
+          <div
+            id="status-details"
+            class="grid grid-cols-1 md:grid-cols-3 gap-4"
+          >
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white" id="uptime">-</div>
+              <div class="text-sm text-gray-400">Uptime</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white" id="version">-</div>
+              <div class="text-sm text-gray-400">Version</div>
+            </div>
+            <div class="text-center">
+              <div class="text-2xl font-bold text-white" id="environment">
+                -
+              </div>
+              <div class="text-sm text-gray-400">Environment</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Component Status -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Database Status -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Database</h3>
+            <div id="db-status" class="w-3 h-3 rounded-full"></div>
+          </div>
+          <div id="db-details" class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Status:</span>
+              <span id="db-status-text">Loading...</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Connection:</span>
+              <span id="db-connection">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Host:</span>
+              <span id="db-host">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Memory Status -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">Memory</h3>
+            <div id="memory-status" class="w-3 h-3 rounded-full"></div>
+          </div>
+          <div id="memory-details" class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Usage:</span>
+              <span id="memory-usage">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Total:</span>
+              <span id="memory-total">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Free:</span>
+              <span id="memory-free">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CPU Status -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">CPU</h3>
+            <div id="cpu-status" class="w-3 h-3 rounded-full"></div>
+          </div>
+          <div id="cpu-details" class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Usage:</span>
+              <span id="cpu-usage">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Cores:</span>
+              <span id="cpu-cores">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Load (1m):</span>
+              <span id="cpu-load">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- API Status -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">API Endpoints</h3>
+            <div id="api-status" class="w-3 h-3 rounded-full"></div>
+          </div>
+          <div id="api-details" class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Status:</span>
+              <span id="api-status-text">Loading...</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Endpoints:</span>
+              <span id="api-endpoints">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Response:</span>
+              <span id="api-response">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">System Info</h3>
+            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+          </div>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-400">Platform:</span>
+              <span id="platform">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">Node.js:</span>
+              <span id="node-version">-</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-400">PID:</span>
+              <span id="pid">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <h3 class="text-lg font-semibold mb-4">Quick Actions</h3>
+          <div class="space-y-3">
+            <button
+              onclick="refreshHealth()"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Refresh Status
+            </button>
+            <button
+              onclick="showDetailed()"
+              class="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Detailed Report
+            </button>
+            <button
+              onclick="showAPI()"
+              class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              API Status
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed Report Modal -->
+      <div
+        id="detailed-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50"
+      >
+        <div
+          class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto"
+        >
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-semibold">Detailed Health Report</h3>
+            <button
+              onclick="hideDetailed()"
+              class="text-gray-400 hover:text-white"
+            >
+              &times;
+            </button>
+          </div>
+          <pre
+            id="detailed-content"
+            class="bg-gray-900 p-4 rounded-lg text-sm overflow-x-auto"
+          ></pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let healthData = null;
+
+      // Update status indicator
+      function updateStatusIndicator(status) {
+        const dot = document.getElementById("status-dot");
+        const text = document.getElementById("status-text");
+
+        dot.className = "w-3 h-3 rounded-full";
+        if (status === "healthy") {
+          dot.classList.add("bg-green-500");
+          text.textContent = "Healthy";
+        } else if (status === "warning") {
+          dot.classList.add("bg-yellow-500");
+          text.textContent = "Warning";
+        } else {
+          dot.classList.add("bg-red-500");
+          text.textContent = "Unhealthy";
+        }
+      }
+
+      // Update component status
+      function updateComponentStatus(elementId, status) {
+        const element = document.getElementById(elementId);
+        element.className = "w-3 h-3 rounded-full";
+        if (status === "healthy") {
+          element.classList.add("bg-green-500");
+        } else if (status === "warning") {
+          element.classList.add("bg-yellow-500");
+        } else {
+          element.classList.add("bg-red-500");
+        }
+      }
+
+      // Fetch health data
+      async function fetchHealthData() {
+        try {
+          console.log("Fetching health data from /health...");
+          const response = await fetch("/health");
+          console.log("Response status:", response.status);
+          console.log("Response ok:", response.ok);
+
+          const data = await response.json();
+          console.log("Health data received:", data);
+
+          if (data.success) {
+            healthData = data.data;
+            updateDashboard(healthData);
+          } else {
+            console.error("Health check failed:", data.message);
+            updateStatusIndicator("unhealthy");
+          }
+        } catch (error) {
+          console.error("Error fetching health data:", error);
+          updateStatusIndicator("unhealthy");
+        }
+      }
+
+      // Update dashboard with health data
+      function updateDashboard(data) {
+        console.log("Updating dashboard with data:", data);
+
+        // Overall status
+        updateStatusIndicator(data.status);
+        document.getElementById("uptime").textContent = data.uptime;
+        document.getElementById("version").textContent = data.version;
+        document.getElementById("environment").textContent = data.environment;
+
+        // Database
+        if (data.checks && data.checks.database) {
+          updateComponentStatus("db-status", data.checks.database.status);
+          document.getElementById("db-status-text").textContent =
+            data.checks.database.status;
+          document.getElementById("db-connection").textContent =
+            data.checks.database.details.stateText;
+          document.getElementById("db-host").textContent =
+            data.checks.database.details.host;
+        }
+
+        // Memory
+        if (data.checks && data.checks.memory) {
+          updateComponentStatus("memory-status", data.checks.memory.status);
+          document.getElementById("memory-usage").textContent =
+            data.checks.memory.details.usagePercent + "%";
+          document.getElementById("memory-total").textContent =
+            data.checks.memory.details.total;
+          document.getElementById("memory-free").textContent =
+            data.checks.memory.details.free;
+        }
+
+        // CPU
+        if (data.checks && data.checks.cpu) {
+          updateComponentStatus("cpu-status", data.checks.cpu.status);
+          document.getElementById("cpu-usage").textContent =
+            data.checks.cpu.details.usagePercent + "%";
+          document.getElementById("cpu-cores").textContent =
+            data.checks.cpu.details.cores;
+          document.getElementById("cpu-load").textContent =
+            data.checks.cpu.details.loadAverage["1min"];
+        }
+
+        // API
+        if (data.checks && data.checks.api) {
+          updateComponentStatus("api-status", data.checks.api.status);
+          document.getElementById("api-status-text").textContent =
+            data.checks.api.status;
+          document.getElementById("api-endpoints").textContent =
+            data.checks.api.details.totalEndpoints;
+          document.getElementById("api-response").textContent = "OK";
+        }
+
+        // System info - get from detailed health check
+        fetchSystemInfo();
+      }
+
+      // Fetch system info from detailed health check
+      async function fetchSystemInfo() {
+        try {
+          console.log("Fetching system info from /health/detailed...");
+          const response = await fetch("/health/detailed");
+          const data = await response.json();
+          console.log("System info data:", data);
+
+          if (data.success && data.data.system) {
+            document.getElementById("platform").textContent =
+              data.data.system.platform;
+            document.getElementById("node-version").textContent =
+              data.data.system.nodeVersion;
+            document.getElementById("pid").textContent = data.data.system.pid;
+          }
+        } catch (error) {
+          console.error("Error fetching system info:", error);
+          document.getElementById("platform").textContent = "Unknown";
+          document.getElementById("node-version").textContent = "Unknown";
+          document.getElementById("pid").textContent = "Unknown";
+        }
+      }
+
+      // Show detailed report
+      async function showDetailed() {
+        try {
+          const response = await fetch("/health/detailed");
+          const data = await response.json();
+
+          if (data.success) {
+            document.getElementById("detailed-content").textContent =
+              JSON.stringify(data.data, null, 2);
+            document
+              .getElementById("detailed-modal")
+              .classList.remove("hidden");
+            document.getElementById("detailed-modal").classList.add("flex");
+          }
+        } catch (error) {
+          console.error("Error fetching detailed report:", error);
+        }
+      }
+
+      // Hide detailed report
+      function hideDetailed() {
+        document.getElementById("detailed-modal").classList.add("hidden");
+        document.getElementById("detailed-modal").classList.remove("flex");
+      }
+
+      // Show API status
+      async function showAPI() {
+        try {
+          const response = await fetch("/health/api");
+          const data = await response.json();
+          alert("API Status: " + JSON.stringify(data.data, null, 2));
+        } catch (error) {
+          console.error("Error fetching API status:", error);
+        }
+      }
+
+      // Refresh health data
+      function refreshHealth() {
+        fetchHealthData();
+      }
+
+      // Auto-refresh every 30 seconds
+      setInterval(fetchHealthData, 30000);
+
+      // Initial load
+      fetchHealthData();
+    </script>
+  </body>
+</html>

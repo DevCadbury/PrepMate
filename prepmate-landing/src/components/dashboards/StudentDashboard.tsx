@@ -46,6 +46,7 @@ import ChatPage from "./pages/ChatPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import AICompanionPage from "./pages/AICompanionPage";
+import FollowRequestsPage from "./pages/FollowRequestsPage";
 
 interface User {
   id: string;
@@ -95,7 +96,8 @@ interface StudentDashboardProps {
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const { toasts, success, error, warning, info, removeToast } = useToast();
+  const { toasts, success, error: showError, warning, info, removeToast } =
+    useToast();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any>({
@@ -105,7 +107,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
   });
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
 
   // Notification state
@@ -117,6 +119,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
   const getCurrentPage = () => {
     const path = location.pathname;
     if (path.startsWith("/profile")) return "profile";
+    if (path.startsWith("/follow-requests")) return "follow-requests";
     if (path.startsWith("/chat")) return "chat";
     if (path.startsWith("/settings")) return "settings";
     if (path.startsWith("/feed")) return "feed";
@@ -373,9 +376,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         setUnreadCount((prev) => Math.max(0, prev - 1));
         info("Notification marked as read");
       }
-    } catch (error: any) {
-      console.error("Error marking notification as read:", error);
-      error("Failed to mark notification as read", "Please try again.");
+    } catch (err: any) {
+      console.error("Error marking notification as read:", err);
+      showError("Failed to mark notification as read", "Please try again.");
     }
   };
 
@@ -397,9 +400,55 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         setUnreadCount(0);
         success("All notifications marked as read");
       }
-    } catch (error: any) {
-      console.error("Error marking all notifications as read:", error);
-      error("Failed to mark notifications as read", "Please try again.");
+    } catch (err: any) {
+      console.error("Error marking all notifications as read:", err);
+      showError("Failed to mark notifications as read", "Please try again.");
+    }
+  };
+
+  const handleFollowRequestAction = async (
+    notification: Notification,
+    action: "accept" | "reject"
+  ) => {
+    try {
+      const requesterId = notification.userId || notification.user?._id;
+      if (!requesterId) {
+        showError("Follow request error", "Missing requester details.");
+        return;
+      }
+
+      const response = await fetch(
+        `http://localhost:5000/api/social/users/${requesterId}/${action}-follow-request`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || `Failed to ${action} follow request`);
+      }
+
+      setNotifications((prev) => prev.filter((n) => n._id !== notification._id));
+      if (!notification.read) {
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      }
+
+      success(
+        action === "accept" ? "Follow request accepted" : "Follow request rejected",
+        `${notification.user?.name || "User"} has been ${
+          action === "accept" ? "accepted" : "rejected"
+        }.`
+      );
+    } catch (err: any) {
+      console.error(`Error trying to ${action} follow request:`, err);
+      showError(
+        `Failed to ${action} follow request`,
+        err?.message || "Please try again."
+      );
     }
   };
 
@@ -543,7 +592,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Handle accept follow request
+                          handleFollowRequestAction(notification, "accept");
                         }}
                         className="h-6 px-2 text-xs bg-green-500 hover:bg-green-600"
                       >
@@ -555,7 +604,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Handle reject follow request
+                          handleFollowRequestAction(notification, "reject");
                         }}
                         className="h-6 px-2 text-xs hover:bg-red-100"
                       >
@@ -598,9 +647,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
       } else {
         window.location.href = "/";
       }
-    } catch (error: any) {
-      console.error("Error during dashboard logout:", error);
-      error("Logout failed", "Please try again.");
+    } catch (err: any) {
+      console.error("Error during dashboard logout:", err);
+      showError("Logout failed", "Please try again.");
     }
   };
 
@@ -610,10 +659,53 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
     { id: "questions", name: "Questions", icon: QuestionMarkCircleIcon },
     { id: "coding", name: "Coding", icon: CodeBracketIcon },
     { id: "chat", name: "Chat", icon: ChatBubbleLeftRightIcon },
+    { id: "follow-requests", name: "Follow Requests", icon: UserPlusIcon },
     { id: "ai-companion", name: "AI Companion", icon: SparklesIcon },
     { id: "profile", name: "Profile", icon: UserIcon },
     { id: "settings", name: "Settings", icon: Settings },
   ];
+
+  const mobileNavigationItems = [
+    { id: "feed", name: "Feed", icon: HomeIcon },
+    { id: "chat", name: "Chat", icon: ChatBubbleLeftRightIcon },
+    { id: "trending", name: "Trending", icon: FireIcon },
+    { id: "profile", name: "Profile", icon: UserIcon },
+    { id: "settings", name: "Settings", icon: Settings },
+  ];
+
+  const navigateToPage = (pageId: string) => {
+    switch (pageId) {
+      case "feed":
+        navigate("/feed");
+        break;
+      case "trending":
+        navigate("/trending");
+        break;
+      case "questions":
+        navigate("/questions");
+        break;
+      case "coding":
+        navigate("/coding");
+        break;
+      case "chat":
+        navigate("/chat");
+        break;
+      case "follow-requests":
+        navigate("/follow-requests");
+        break;
+      case "ai-companion":
+        navigate("/ai-companion");
+        break;
+      case "profile":
+        navigate("/profile");
+        break;
+      case "settings":
+        navigate("/settings");
+        break;
+      default:
+        navigate("/feed");
+    }
+  };
 
   const renderPage = () => {
     const urlParams = getUrlParams();
@@ -629,6 +721,8 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         return <CodingPage user={user} />;
       case "chat":
         return <ChatPage />;
+      case "follow-requests":
+        return <FollowRequestsPage />;
       case "ai-companion":
         return <AICompanionPage user={user} />;
       case "profile":
@@ -643,9 +737,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
   return (
     <>
       <ToastContainer toasts={toasts} onClose={removeToast} />
-      <div className="min-h-screen bg-background text-foreground">
+      <div className="h-screen overflow-hidden bg-background text-foreground">
         {/* Header */}
-        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
+        <header className="fixed top-0 left-0 right-0 z-50 w-full border-b bg-background/95 backdrop-blur">
           <div className="container flex h-16 items-center justify-between px-4">
             {/* Logo */}
             <div className="flex items-center space-x-2">
@@ -960,9 +1054,10 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         </header>
 
         {/* Main Content */}
-        <div className="flex">
+        <div className="pt-16 h-full">
+          <div className="flex h-[calc(100vh-4rem)]">
           {/* Sidebar Navigation */}
-          <nav className="w-64 min-h-screen border-r bg-card p-4">
+          <nav className="hidden md:block md:fixed md:left-0 md:top-16 md:h-[calc(100vh-4rem)] md:w-64 border-r bg-card p-4 overflow-y-auto">
             <div className="space-y-2">
               {navigationItems.map((item) => {
                 const Icon = item.icon;
@@ -975,36 +1070,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
                       "w-full justify-start",
                       isActive && "bg-primary text-primary-foreground"
                     )}
-                    onClick={() => {
-                      switch (item.id) {
-                        case "feed":
-                          navigate("/feed");
-                          break;
-                        case "trending":
-                          navigate("/trending");
-                          break;
-                        case "questions":
-                          navigate("/questions");
-                          break;
-                        case "coding":
-                          navigate("/coding");
-                          break;
-                        case "chat":
-                          navigate("/chat");
-                          break;
-                        case "ai-companion":
-                          navigate("/ai-companion");
-                          break;
-                        case "profile":
-                          navigate("/profile");
-                          break;
-                        case "settings":
-                          navigate("/settings");
-                          break;
-                        default:
-                          navigate("/feed");
-                      }
-                    }}
+                    onClick={() => navigateToPage(item.id)}
                   >
                     <Icon className="h-4 w-4 mr-3" />
                     {item.name}
@@ -1015,7 +1081,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
           </nav>
 
           {/* Page Content */}
-          <main className="flex-1 p-6">
+          <main className="flex-1 md:ml-64 p-4 md:p-6 pb-24 md:pb-6 overflow-y-auto h-[calc(100vh-4rem)]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentPage}
@@ -1028,6 +1094,31 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
               </motion.div>
             </AnimatePresence>
           </main>
+          </div>
+
+          {/* Mobile Bottom Navigation */}
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-background/95 backdrop-blur">
+            <div className="grid grid-cols-5 gap-1 p-2">
+              {mobileNavigationItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = currentPage === item.id;
+                return (
+                  <Button
+                    key={`mobile-${item.id}`}
+                    variant="ghost"
+                    onClick={() => navigateToPage(item.id)}
+                    className={cn(
+                      "h-12 flex flex-col items-center justify-center gap-1",
+                      isActive && "text-primary"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="text-[10px] leading-none">{item.name}</span>
+                  </Button>
+                );
+              })}
+            </div>
+          </nav>
         </div>
       </div>
     </>

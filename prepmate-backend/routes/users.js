@@ -5,11 +5,21 @@ const { verifyTokenMiddleware, requireRole } = require("../utils/jwtUtils");
 const { authenticateToken } = require("../middleware/auth");
 const { asyncHandler } = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const router = express.Router();
 
+const hasUserId = (list, userId) => {
+  if (!Array.isArray(list) || !userId) return false;
+  const target = userId.toString();
+  return list.some((id) => id.toString() === target);
+};
+
 // Apply authentication middleware to all routes
 router.use(verifyTokenMiddleware);
+
+// Use the model from environment variable or default to gemini-2.5-flash-preview-native-audio-dialog
+const GEMINI_MODEL = process.env.REACT_APP_GEMINI_MODEL || "gemini-2.5-flash-preview-native-audio-dialog";
 
 // @route   GET /api/users/profile
 // @desc    Get current user's profile
@@ -121,6 +131,10 @@ router.put(
 router.put(
   "/preferences",
   [
+    body("preferences.account.twoFactorEnabled")
+      .optional()
+      .isBoolean()
+      .withMessage("Two-factor setting must be a boolean"),
     body("preferences.notifications.email")
       .optional()
       .isBoolean()
@@ -141,11 +155,132 @@ router.put(
       .optional()
       .isBoolean()
       .withMessage("Show email must be a boolean"),
+    body("preferences.privacy.showPhone")
+      .optional()
+      .isBoolean()
+      .withMessage("Show phone must be a boolean"),
+    body("preferences.privacy.showFollowers")
+      .optional()
+      .isBoolean()
+      .withMessage("Show followers must be a boolean"),
+    body("preferences.privacy.showFollowing")
+      .optional()
+      .isBoolean()
+      .withMessage("Show following must be a boolean"),
+    body("preferences.privacy.showPosts")
+      .optional()
+      .isIn(["public", "friends", "private"])
+      .withMessage("Invalid post visibility setting"),
+    body("preferences.privacy.allowMessages")
+      .optional()
+      .isIn(["everyone", "friends", "none"])
+      .withMessage("Invalid allow messages setting"),
+    body("preferences.privacy.allowComments")
+      .optional()
+      .isIn(["everyone", "friends", "none"])
+      .withMessage("Invalid allow comments setting"),
+    body("preferences.privacy.showOnlineStatus")
+      .optional()
+      .isBoolean()
+      .withMessage("Show online status must be a boolean"),
+    body("preferences.privacy.showLastSeen")
+      .optional()
+      .isBoolean()
+      .withMessage("Show last seen must be a boolean"),
     body("preferences.privacy.showProgress")
       .optional()
       .isBoolean()
       .withMessage("Show progress must be a boolean"),
+    body("preferences.notifications.newFollowers")
+      .optional()
+      .isBoolean()
+      .withMessage("New followers notification must be a boolean"),
+    body("preferences.notifications.newLikes")
+      .optional()
+      .isBoolean()
+      .withMessage("New likes notification must be a boolean"),
+    body("preferences.notifications.newComments")
+      .optional()
+      .isBoolean()
+      .withMessage("New comments notification must be a boolean"),
+    body("preferences.notifications.mentions")
+      .optional()
+      .isBoolean()
+      .withMessage("Mentions notification must be a boolean"),
+    body("preferences.notifications.achievements")
+      .optional()
+      .isBoolean()
+      .withMessage("Achievements notification must be a boolean"),
     body("preferences.theme")
+      .optional()
+      .isIn(["light", "dark", "auto"])
+      .withMessage("Invalid theme setting"),
+
+    body("account.twoFactorEnabled")
+      .optional()
+      .isBoolean()
+      .withMessage("Two-factor setting must be a boolean"),
+    body("privacy.profileVisibility")
+      .optional()
+      .isIn(["public", "private", "friends"])
+      .withMessage("Invalid profile visibility setting"),
+    body("privacy.showEmail")
+      .optional()
+      .isBoolean()
+      .withMessage("Show email must be a boolean"),
+    body("privacy.showPhone")
+      .optional()
+      .isBoolean()
+      .withMessage("Show phone must be a boolean"),
+    body("privacy.showFollowers")
+      .optional()
+      .isBoolean()
+      .withMessage("Show followers must be a boolean"),
+    body("privacy.showFollowing")
+      .optional()
+      .isBoolean()
+      .withMessage("Show following must be a boolean"),
+    body("privacy.showPosts")
+      .optional()
+      .isIn(["public", "friends", "private"])
+      .withMessage("Invalid post visibility setting"),
+    body("privacy.allowMessages")
+      .optional()
+      .isIn(["everyone", "friends", "none"])
+      .withMessage("Invalid allow messages setting"),
+    body("privacy.allowComments")
+      .optional()
+      .isIn(["everyone", "friends", "none"])
+      .withMessage("Invalid allow comments setting"),
+    body("privacy.showOnlineStatus")
+      .optional()
+      .isBoolean()
+      .withMessage("Show online status must be a boolean"),
+    body("privacy.showLastSeen")
+      .optional()
+      .isBoolean()
+      .withMessage("Show last seen must be a boolean"),
+    body("notifications.newFollowers")
+      .optional()
+      .isBoolean()
+      .withMessage("New followers notification must be a boolean"),
+    body("notifications.newLikes")
+      .optional()
+      .isBoolean()
+      .withMessage("New likes notification must be a boolean"),
+    body("notifications.newComments")
+      .optional()
+      .isBoolean()
+      .withMessage("New comments notification must be a boolean"),
+    body("notifications.mentions")
+      .optional()
+      .isBoolean()
+      .withMessage("Mentions notification must be a boolean"),
+    body("notifications.achievements")
+      .optional()
+      .isBoolean()
+      .withMessage("Achievements notification must be a boolean"),
+    body("theme")
       .optional()
       .isIn(["light", "dark", "auto"])
       .withMessage("Invalid theme setting"),
@@ -161,10 +296,63 @@ router.put(
 
     const updateData = {};
 
-    if (req.body.preferences) {
+    const incomingPreferences =
+      req.body.preferences && typeof req.body.preferences === "object"
+        ? { ...req.body.preferences }
+        : {};
+
+    if (req.body.account && typeof req.body.account === "object") {
+      incomingPreferences.account = {
+        ...(incomingPreferences.account || {}),
+        ...req.body.account,
+      };
+    }
+
+    if (req.body.privacy && typeof req.body.privacy === "object") {
+      incomingPreferences.privacy = {
+        ...(incomingPreferences.privacy || {}),
+        ...req.body.privacy,
+      };
+    }
+
+    if (
+      req.body.notifications &&
+      typeof req.body.notifications === "object"
+    ) {
+      incomingPreferences.notifications = {
+        ...(incomingPreferences.notifications || {}),
+        ...req.body.notifications,
+      };
+    }
+
+    if (req.body.theme && !incomingPreferences.account?.theme) {
+      incomingPreferences.account = {
+        ...(incomingPreferences.account || {}),
+        theme: req.body.theme,
+      };
+    }
+
+    const hasPreferenceUpdate =
+      Object.keys(incomingPreferences.account || {}).length > 0 ||
+      Object.keys(incomingPreferences.privacy || {}).length > 0 ||
+      Object.keys(incomingPreferences.notifications || {}).length > 0;
+
+    if (hasPreferenceUpdate) {
+      const currentPreferences = req.user.preferences || {};
       updateData.preferences = {
-        ...req.user.preferences,
-        ...req.body.preferences,
+        ...currentPreferences,
+        account: {
+          ...(currentPreferences.account || {}),
+          ...(incomingPreferences.account || {}),
+        },
+        privacy: {
+          ...(currentPreferences.privacy || {}),
+          ...(incomingPreferences.privacy || {}),
+        },
+        notifications: {
+          ...(currentPreferences.notifications || {}),
+          ...(incomingPreferences.notifications || {}),
+        },
       };
     }
 
@@ -319,11 +507,11 @@ router.get(
 
     const currentUser = await User.findById(currentUserId);
     const isProfileOwner = targetUserId === currentUserId;
-    const isFollowing =
-      currentUser.following && currentUser.following.includes(targetUserId);
-    const hasFollowRequest =
-      targetUser.followRequests &&
-      targetUser.followRequests.includes(currentUserId);
+    const isFollowing = hasUserId(currentUser.following, targetUserId);
+    const hasFollowRequest = hasUserId(
+      targetUser.followRequests,
+      currentUserId
+    );
     const isPrivate =
       targetUser.preferences?.privacy?.profileVisibility === "private";
     const canFollow = !isProfileOwner && !isFollowing && !hasFollowRequest;
@@ -401,11 +589,11 @@ router.get(
 
     const currentUser = await User.findById(currentUserId);
     const isProfileOwner = targetUserId === currentUserId;
-    const isFollowing =
-      currentUser.following && currentUser.following.includes(targetUserId);
-    const hasFollowRequest =
-      targetUser.followRequests &&
-      targetUser.followRequests.includes(currentUserId);
+    const isFollowing = hasUserId(currentUser.following, targetUserId);
+    const hasFollowRequest = hasUserId(
+      targetUser.followRequests,
+      currentUserId
+    );
     const isPrivate =
       targetUser.preferences?.privacy?.profileVisibility === "private";
     const canFollow = !isProfileOwner && !isFollowing && !hasFollowRequest;
@@ -484,10 +672,7 @@ router.post(
     const currentUser = await User.findById(req.user.id);
 
     // Check if already following
-    if (
-      currentUser.following &&
-      currentUser.following.includes(req.params.id)
-    ) {
+    if (hasUserId(currentUser.following, req.params.id)) {
       return res.status(400).json({
         success: false,
         message: "Already following this user",
@@ -495,10 +680,7 @@ router.post(
     }
 
     // Check if follow request already sent
-    if (
-      userToFollow.followRequests &&
-      userToFollow.followRequests.includes(req.user.id)
-    ) {
+    if (hasUserId(userToFollow.followRequests, req.user.id)) {
       return res.status(400).json({
         success: false,
         message: "Follow request already sent",
@@ -567,7 +749,7 @@ router.post(
     }
 
     // Check if follow request exists
-    if (!currentUser.followRequests.includes(requesterId)) {
+    if (!hasUserId(currentUser.followRequests, requesterId)) {
       return res.status(400).json({
         success: false,
         message: "No follow request from this user",
@@ -619,7 +801,7 @@ router.post(
     }
 
     // Check if follow request exists
-    if (!currentUser.followRequests.includes(requesterId)) {
+    if (!hasUserId(currentUser.followRequests, requesterId)) {
       return res.status(400).json({
         success: false,
         message: "No follow request from this user",
@@ -638,6 +820,96 @@ router.post(
     res.json({
       success: true,
       message: "Follow request rejected",
+    });
+  })
+);
+
+// @route   POST /api/users/follow-requests/bulk
+// @desc    Bulk accept/reject follow requests
+// @access  Private
+router.post(
+  "/follow-requests/bulk",
+  asyncHandler(async (req, res) => {
+    const { action, userIds } = req.body;
+    const currentUserId = req.user.id;
+
+    if (!["accept", "reject"].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid action. Use 'accept' or 'reject'.",
+      });
+    }
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "userIds must be a non-empty array",
+      });
+    }
+
+    const currentUser = await User.findById(currentUserId).select(
+      "followRequests"
+    );
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const validRequesterIds = userIds.filter((requesterId) =>
+      hasUserId(currentUser.followRequests, requesterId)
+    );
+
+    if (validRequesterIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid follow requests found for provided users",
+      });
+    }
+
+    await User.findByIdAndUpdate(currentUserId, {
+      $pull: { followRequests: { $in: validRequesterIds } },
+      ...(action === "accept"
+        ? { $addToSet: { followers: { $each: validRequesterIds } } }
+        : {}),
+    });
+
+    await User.updateMany(
+      { _id: { $in: validRequesterIds } },
+      {
+        $pull: { pendingFollowRequests: currentUserId },
+        ...(action === "accept"
+          ? { $addToSet: { following: currentUserId } }
+          : {}),
+      }
+    );
+
+    if (action === "accept") {
+      const Notification = require("../models/Notification");
+      const currentUserFull = await User.findById(currentUserId).select("name");
+
+      await Notification.insertMany(
+        validRequesterIds.map((requesterId) => ({
+          type: "follow_accepted",
+          message: `${currentUserFull?.name || "User"} accepted your follow request`,
+          userId: requesterId,
+          user: currentUserId,
+        }))
+      );
+    }
+
+    res.json({
+      success: true,
+      message:
+        action === "accept"
+          ? "Follow requests accepted"
+          : "Follow requests rejected",
+      data: {
+        action,
+        processed: validRequesterIds.length,
+        userIds: validRequesterIds,
+      },
     });
   })
 );
@@ -666,10 +938,7 @@ router.post(
     const currentUser = await User.findById(req.user.id);
 
     // Check if following
-    if (
-      !currentUser.following ||
-      !currentUser.following.includes(req.params.id)
-    ) {
+    if (!hasUserId(currentUser.following, req.params.id)) {
       return res.status(400).json({
         success: false,
         message: "Not following this user",
@@ -718,7 +987,7 @@ router.post(
     }
 
     // Check if the user is actually following you
-    if (!currentUser.followers || !currentUser.followers.includes(followerId)) {
+    if (!hasUserId(currentUser.followers, followerId)) {
       return res.status(400).json({
         success: false,
         message: "This user is not following you",
@@ -769,10 +1038,7 @@ router.post(
     }
 
     // Check if already blocked
-    if (
-      currentUser.blockedUsers &&
-      currentUser.blockedUsers.includes(userToBlockId)
-    ) {
+    if (hasUserId(currentUser.blockedUsers, userToBlockId)) {
       return res.status(400).json({
         success: false,
         message: "User is already blocked",
@@ -825,10 +1091,7 @@ router.post(
     }
 
     // Check if user is blocked
-    if (
-      !currentUser.blockedUsers ||
-      !currentUser.blockedUsers.includes(userToUnblockId)
-    ) {
+    if (!hasUserId(currentUser.blockedUsers, userToUnblockId)) {
       return res.status(400).json({
         success: false,
         message: "User is not blocked",
@@ -897,11 +1160,24 @@ router.get(
     // Check if viewer is the profile owner
     const isProfileOwner = viewerId === targetUser._id.toString();
 
+    const viewerUser = isProfileOwner
+      ? null
+      : await User.findById(viewerId).select("following");
+
+    if (!isProfileOwner && !viewerUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Viewer not found",
+      });
+    }
+
     // Check if viewer is a follower
-    const isFollower = targetUser.followers.includes(viewerId);
+    const isFollower =
+      hasUserId(targetUser.followers, viewerId) ||
+      hasUserId(viewerUser?.following, targetUser._id);
 
     // Check if follow request is pending
-    const hasFollowRequest = targetUser.followRequests.includes(viewerId);
+    const hasFollowRequest = hasUserId(targetUser.followRequests, viewerId);
 
     // Determine viewer permissions based on privacy settings
     const privacy = targetUser.preferences?.privacy;
@@ -944,9 +1220,7 @@ router.get(
       canComment = isFollower && privacy?.allowComments !== "none";
     } else if (profileVisibility === "friends") {
       // Friends-only profile
-      const isFriend =
-        targetUser.followers.includes(viewerId) &&
-        targetUser.following.includes(viewerId);
+      const isFriend = isFollower && hasUserId(targetUser.following, viewerId);
       canViewProfile = isFriend || isFollower;
       canViewPosts = isFriend || isFollower;
       canViewFollowers =
@@ -1065,7 +1339,7 @@ const checkMessagePermission = (targetUser, viewerId) => {
     targetUser.preferences?.privacy?.allowMessages || "everyone";
 
   if (allowMessages === "everyone") return true;
-  if (allowMessages === "friends" && targetUser.followers.includes(viewerId))
+  if (allowMessages === "friends" && hasUserId(targetUser.followers, viewerId))
     return true;
   if (allowMessages === "none") return false;
 
@@ -1078,11 +1352,361 @@ const checkCommentPermission = (targetUser, viewerId) => {
     targetUser.preferences?.privacy?.allowComments || "everyone";
 
   if (allowComments === "everyone") return true;
-  if (allowComments === "friends" && targetUser.followers.includes(viewerId))
+  if (allowComments === "friends" && hasUserId(targetUser.followers, viewerId))
     return true;
   if (allowComments === "none") return false;
 
   return false;
 };
+
+// Voice model definitions
+const AVAILABLE_VOICE_MODELS = [
+  // Indian Female Voices
+  { id: "en-IN-female-1", name: "Aria (Indian Female)", lang: "en-IN", gender: "female", country: "India" },
+  { id: "en-IN-female-2", name: "Kavya (Indian Female)", lang: "en-IN", gender: "female", country: "India" },
+  { id: "en-IN-female-3", name: "Priya (Indian Female)", lang: "en-IN", gender: "female", country: "India" },
+  { id: "en-IN-female-4", name: "Shreya (Indian Female)", lang: "en-IN", gender: "female", country: "India" },
+  
+  // Indian Male Voices
+  { id: "en-IN-male-1", name: "Arjun (Indian Male)", lang: "en-IN", gender: "male", country: "India" },
+  { id: "en-IN-male-2", name: "Vikram (Indian Male)", lang: "en-IN", gender: "male", country: "India" },
+  { id: "en-IN-male-3", name: "Rohit (Indian Male)", lang: "en-IN", gender: "male", country: "India" },
+  { id: "en-IN-male-4", name: "Aditya (Indian Male)", lang: "en-IN", gender: "male", country: "India" },
+  
+  // US Voices
+  { id: "en-US-female-1", name: "Sarah (US Female)", lang: "en-US", gender: "female", country: "US" },
+  { id: "en-US-male-1", name: "David (US Male)", lang: "en-US", gender: "male", country: "US" },
+  
+  // UK Voices
+  { id: "en-GB-female-1", name: "Emma (UK Female)", lang: "en-GB", gender: "female", country: "UK" },
+  { id: "en-GB-male-1", name: "Oliver (UK Male)", lang: "en-GB", gender: "male", country: "UK" },
+];
+
+// @route   GET /api/users/ai-companion/voice-models
+// @desc    Get available voice models
+// @access  Private
+router.get(
+  "/ai-companion/voice-models",
+  asyncHandler(async (req, res) => {
+    res.json({
+      success: true,
+      data: { voiceModels: AVAILABLE_VOICE_MODELS },
+    });
+  })
+);
+
+// @route   GET /api/users/ai-companion/settings
+// @desc    Get AI companion settings
+// @access  Private
+router.get(
+  "/ai-companion/settings",
+  asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id).select("+aiCompanion.geminiApiKey");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const settings = {
+      selectedVoiceModel: user.aiCompanion?.selectedVoiceModel || "en-IN-female-1",
+      voicePreferences: user.aiCompanion?.voicePreferences || {
+        rate: 1,
+        pitch: 1,
+        volume: 1,
+      },
+      hasApiKey: !!user.aiCompanion?.geminiApiKey,
+      isApiKeyValid: user.aiCompanion?.isApiKeyValid || false,
+      lastApiKeyValidation: user.aiCompanion?.lastApiKeyValidation,
+    };
+
+    res.json({
+      success: true,
+      data: { settings },
+    });
+  })
+);
+
+// @route   POST /api/users/ai-companion/api-key
+// @desc    Set and validate Gemini API key
+// @access  Private
+router.post(
+  "/ai-companion/api-key",
+  [
+    body("apiKey")
+      .notEmpty()
+      .withMessage("API key is required")
+      .isLength({ min: 10 })
+      .withMessage("Invalid API key format"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array(),
+      });
+    }
+
+    const { apiKey } = req.body;
+
+    // Validate API key 
+    let isValid = false;
+    let validationError = null;
+    
+    try {
+      // Basic format validation
+      if (!apiKey.startsWith('AIzaSy')) {
+        throw new Error('Invalid API key format - must start with AIzaSy');
+      }
+      
+      if (apiKey.length < 39) {
+        throw new Error('Invalid API key format - too short');
+      }
+      
+      logger.info('Attempting to validate API key:', apiKey.substring(0, 15) + '...');
+      
+      // For development/testing, you can skip actual API validation by setting NODE_ENV
+      if (process.env.NODE_ENV === 'development' && process.env.SKIP_API_VALIDATION === 'true') {
+        logger.info('Skipping API validation in development mode');
+        isValid = true;
+      } else {
+        // Perform actual API validation
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+        
+        // Test the API key with a simple prompt and timeout
+        const result = await Promise.race([
+          model.generateContent("Test"),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Request timeout - please try again')), 15000)
+          )
+        ]);
+        
+        const response = result.response;
+        const text = response.text();
+        
+        if (text && text.length > 0) {
+          isValid = true;
+          logger.info('API key validation successful');
+        } else {
+          throw new Error('Empty response from Gemini API');
+        }
+      }
+    } catch (error) {
+      logger.error("API key validation failed:", {
+        message: error.message,
+        name: error.name,
+        stack: error.stack?.split('\n')[0]
+      });
+      
+      isValid = false;
+      
+      // Enhanced error handling with more specific messages
+      const errorMessage = error.message?.toLowerCase() || '';
+      
+      if (errorMessage.includes('api_key_invalid') || 
+          errorMessage.includes('invalid api key') ||
+          errorMessage.includes('403') ||
+          error.status === 403) {
+        validationError = 'Invalid API key. Please verify your Gemini API key from Google AI Studio.';
+      } else if (errorMessage.includes('quota') || 
+                 errorMessage.includes('429') ||
+                 error.status === 429) {
+        validationError = 'API quota exceeded. Please check your Google AI Studio usage limits.';
+      } else if (errorMessage.includes('permission') || 
+                 errorMessage.includes('401') ||
+                 error.status === 401) {
+        validationError = 'API key lacks permission. Please ensure Gemini API access is enabled.';
+      } else if (errorMessage.includes('timeout')) {
+        validationError = 'Validation timeout. Please check your connection and try again.';
+      } else if (errorMessage.includes('network') || 
+                 errorMessage.includes('enotfound') ||
+                 errorMessage.includes('econnrefused')) {
+        validationError = 'Network error. Please check your internet connection.';
+      } else if (errorMessage.includes('format')) {
+        validationError = error.message;
+      } else {
+        validationError = 'API key validation failed. Please verify your key and try again.';
+      }
+    }
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: validationError || "Invalid API key. Please check your Gemini API key.",
+      });
+    }
+
+    // Update user with validated API key
+    await User.findByIdAndUpdate(req.user.id, {
+      "aiCompanion.geminiApiKey": apiKey,
+      "aiCompanion.isApiKeyValid": true,
+      "aiCompanion.lastApiKeyValidation": new Date(),
+    });
+
+    res.json({
+      success: true,
+      message: "API key validated and saved successfully",
+    });
+  })
+);
+
+// @route   PUT /api/users/ai-companion/voice-model
+// @desc    Update selected voice model
+// @access  Private
+router.put(
+  "/ai-companion/voice-model",
+  [
+    body("voiceModelId")
+      .notEmpty()
+      .withMessage("Voice model ID is required")
+      .custom((value) => {
+        const validIds = AVAILABLE_VOICE_MODELS.map(model => model.id);
+        if (!validIds.includes(value)) {
+          throw new Error("Invalid voice model ID");
+        }
+        return true;
+      }),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array(),
+      });
+    }
+
+    const { voiceModelId } = req.body;
+
+    await User.findByIdAndUpdate(req.user.id, {
+      "aiCompanion.selectedVoiceModel": voiceModelId,
+    });
+
+    const selectedVoice = AVAILABLE_VOICE_MODELS.find(model => model.id === voiceModelId);
+
+    res.json({
+      success: true,
+      message: "Voice model updated successfully",
+      data: { selectedVoice },
+    });
+  })
+);
+
+// @route   PUT /api/users/ai-companion/voice-preferences
+// @desc    Update voice preferences (rate, pitch, volume)
+// @access  Private
+router.put(
+  "/ai-companion/voice-preferences",
+  [
+    body("rate")
+      .optional()
+      .isFloat({ min: 0.1, max: 10 })
+      .withMessage("Rate must be between 0.1 and 10"),
+    body("pitch")
+      .optional()
+      .isFloat({ min: 0, max: 2 })
+      .withMessage("Pitch must be between 0 and 2"),
+    body("volume")
+      .optional()
+      .isFloat({ min: 0, max: 1 })
+      .withMessage("Volume must be between 0 and 1"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        errors: errors.array(),
+      });
+    }
+
+    const { rate, pitch, volume } = req.body;
+    const updateData = {};
+
+    if (rate !== undefined) updateData["aiCompanion.voicePreferences.rate"] = rate;
+    if (pitch !== undefined) updateData["aiCompanion.voicePreferences.pitch"] = pitch;
+    if (volume !== undefined) updateData["aiCompanion.voicePreferences.volume"] = volume;
+
+    await User.findByIdAndUpdate(req.user.id, updateData);
+
+    res.json({
+      success: true,
+      message: "Voice preferences updated successfully",
+    });
+  })
+);
+
+// @route   DELETE /api/users/ai-companion/api-key
+// @desc    Remove API key
+// @access  Private
+router.delete(
+  "/ai-companion/api-key",
+  asyncHandler(async (req, res) => {
+    await User.findByIdAndUpdate(req.user.id, {
+      $unset: {
+        "aiCompanion.geminiApiKey": "",
+      },
+      "aiCompanion.isApiKeyValid": false,
+      "aiCompanion.lastApiKeyValidation": null,
+    });
+
+    res.json({
+      success: true,
+      message: "API key removed successfully",
+    });
+  })
+);
+
+// @route   POST /api/users/ai-companion/validate-api-key
+// @desc    Validate existing API key
+// @access  Private
+router.post(
+  "/ai-companion/validate-api-key",
+  asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id).select("+aiCompanion.geminiApiKey");
+
+    if (!user || !user.aiCompanion?.geminiApiKey) {
+      return res.status(400).json({
+        success: false,
+        message: "No API key found. Please set your API key first.",
+      });
+    }
+
+    const apiKey = user.aiCompanion.geminiApiKey;
+
+    // Validate API key
+    let isValid = false;
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      
+      const result = await model.generateContent("Hello, this is a test.");
+      const response = await result.response;
+      
+      if (response && response.text) {
+        isValid = true;
+      }
+    } catch (error) {
+      logger.error("API key validation failed:", error);
+      isValid = false;
+    }
+
+    // Update validation status
+    await User.findByIdAndUpdate(req.user.id, {
+      "aiCompanion.isApiKeyValid": isValid,
+      "aiCompanion.lastApiKeyValidation": new Date(),
+    });
+
+    res.json({
+      success: true,
+      isValid,
+      message: isValid ? "API key is valid" : "API key is invalid. Please update your API key.",
+    });
+  })
+);
 
 module.exports = router;

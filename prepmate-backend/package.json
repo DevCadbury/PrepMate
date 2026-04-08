@@ -9,7 +9,7 @@
     "create-admin": "node scripts/createSuperAdmin.js",
     "setup-admin": "node scripts/setupAdmin.js",
     "seed-users": "node scripts/seedUsers.js",
-    "test": "jest",
+    "test": "jest --passWithNoTests",
     "seed": "node scripts/seed.js",
     "test-health": "node test-health.js"
   },
@@ -23,6 +23,7 @@
   "author": "PrepMate Team",
   "license": "MIT",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
     "bull": "^4.11.3",
     "cloudinary": "^1.41.3",

@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { initializeIndianVoices } from "./services/initIndianVoices";
+import { responsiveVoiceService } from "./services/responsiveVoiceService";
 import Hero from "./components/Hero";
 import Features from "./components/Features";
 import Pricing from "./components/Pricing";
@@ -25,11 +27,11 @@ import UsernameSelection from "./components/UsernameSelection";
 import GoogleAuthCallback from "./components/GoogleAuthCallback";
 import GoogleAuthError from "./components/GoogleAuthError";
 import TestGoogleAuth from "./components/TestGoogleAuth";
+import ResetPasswordPage from "./components/ResetPasswordPage";
 import LandingPage from "./components/dashboards/pages/LandingPage";
 import SettingsPage from "./components/dashboards/pages/SettingsPage";
 import ProfilePage from "./components/dashboards/pages/ProfilePage";
 import FeedPage from "./components/dashboards/pages/FeedPage";
-import ChatPage from "./components/dashboards/pages/ChatPage";
 import TrendingPage from "./components/dashboards/pages/TrendingPage";
 import QuestionsPage from "./components/dashboards/pages/QuestionsPage";
 import CodingPage from "./components/dashboards/pages/CodingPage";
@@ -38,6 +40,37 @@ import AICompanionPage from "./components/dashboards/pages/AICompanionPage";
 function App() {
   const [showSignIn, setShowSignIn] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
+
+  // Initialize voice services on app startup
+  useEffect(() => {
+    const initializeVoices = async () => {
+      try {
+        // Initialize Indian voice service
+        initializeIndianVoices();
+        
+        // Initialize ResponsiveVoice service for Hindi and Indian languages
+        console.log('🔄 Initializing ResponsiveVoice service...');
+        const status = responsiveVoiceService.getStatus();
+        console.log(`📊 Voice service status:`, status);
+        
+        // Wait a bit for ResponsiveVoice to load
+        setTimeout(() => {
+          const finalStatus = responsiveVoiceService.getStatus();
+          if (finalStatus.available) {
+            console.log('✅ ResponsiveVoice service ready');
+            console.log(`🇮🇳 Available: ${finalStatus.hindiVoices} Hindi, ${finalStatus.tamilVoices} Tamil, ${finalStatus.bengaliVoices} Bengali voices`);
+          } else {
+            console.log('⚠️ ResponsiveVoice service not available, using fallbacks');
+          }
+        }, 2000);
+        
+      } catch (error) {
+        console.error('Voice service initialization error:', error);
+      }
+    };
+    
+    initializeVoices();
+  }, []);
 
   const handleGetStarted = () => {
     setShowSignUp(true);
@@ -125,6 +158,10 @@ function App() {
           <Route path="/auth/google/error" element={<GoogleAuthError />} />
           <Route path="/test-google-auth" element={<TestGoogleAuth />} />
           <Route
+            path="/reset-password/:token"
+            element={<ResetPasswordPage />}
+          />
+          <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
@@ -176,7 +213,7 @@ function App() {
             path="/chat"
             element={
               <ProtectedRoute>
-                <ChatPage />
+                <StudentDashboard />
               </ProtectedRoute>
             }
           />
@@ -184,7 +221,15 @@ function App() {
             path="/chat/:roomId"
             element={
               <ProtectedRoute>
-                <ChatPage />
+                <StudentDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/follow-requests"
+            element={
+              <ProtectedRoute>
+                <StudentDashboard />
               </ProtectedRoute>
             }
           />

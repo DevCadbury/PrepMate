@@ -6,6 +6,7 @@ import * as THREE from "three";
 
 interface WebGLAvatarProps {
   interviewState: InterviewState;
+  isAudioPlaying?: boolean;
 }
 
 const AVATAR_URL = "https://models.readyplayer.me/68948fbeef2ebda3c26f743b.glb";
@@ -14,15 +15,59 @@ const AVATAR_URL = "https://models.readyplayer.me/68948fbeef2ebda3c26f743b.glb";
 function getHeadPosition(scene: THREE.Group) {
   const box = new THREE.Box3().setFromObject(scene);
   const center = box.getCenter(new THREE.Vector3());
-  // Head is at the top of the bounding box, focus on upper face area
-  const headY = box.max.y - (box.max.y - box.min.y) * 0.15; // focus on upper face/eyes area
-  return new THREE.Vector3(center.x, headY, center.z);
+  
+  console.log('📏 Model bounding box:', { 
+    min: box.min, 
+    max: box.max, 
+    center: center,
+    height: box.max.y - box.min.y 
+  });
+  
+  // Find the actual head bone or face mesh for more accurate positioning
+  let headBone: THREE.Object3D | null = null;
+  scene.traverse((child: THREE.Object3D) => {
+    const childName = child.name.toLowerCase();
+    if (childName.includes('head') || 
+        childName.includes('face') ||
+        childName.includes('skull') ||
+        childName.includes('neck') ||
+        child.type === 'SkinnedMesh') {
+      console.log('🔍 Found potential head bone:', child.name, child.type, child.position);
+      if (!headBone || child.position.y > (headBone.position.y || -999)) {
+        headBone = child; // Use the highest positioned bone/mesh
+      }
+    }
+  });
+  
+  if (headBone) {
+    try {
+      const worldPosition = new THREE.Vector3();
+      (headBone as THREE.Object3D).getWorldPosition(worldPosition);
+      console.log('🎯 Head bone world position:', worldPosition);
+      
+      // If the world position seems reasonable (positive Y for head)
+      if (worldPosition.y > center.y) {
+        return new THREE.Vector3(worldPosition.x, worldPosition.y, worldPosition.z);
+      }
+    } catch (error) {
+      console.warn('Could not get world position from head bone:', error);
+    }
+  }
+  
+  // Enhanced fallback: Always use the TOP of the bounding box for head
+  // Head should be at the highest point of the model
+  const headY = box.max.y - (box.max.y - box.min.y) * 0.1; // Near the top, slight adjustment for face
+  const facePosition = new THREE.Vector3(center.x, headY, center.z);
+  
+  console.log('📍 Calculated face position (fallback):', facePosition);
+  return facePosition;
 }
 
 const VideoCallAvatar: React.FC<{
   interviewState: InterviewState;
   camera: THREE.PerspectiveCamera | null;
-}> = ({ interviewState, camera }) => {
+  isAudioPlaying?: boolean;
+}> = ({ interviewState, camera, isAudioPlaying = false }) => {
   const { scene, animations } = useGLTF(AVATAR_URL);
   const modelRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
@@ -33,11 +78,33 @@ const VideoCallAvatar: React.FC<{
   const [eyeBlinkValue, setEyeBlinkValue] = useState(0);
   const timeRef = useRef(0);
   const lastBlinkTime = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   // Store head position for camera targeting
   const [headPosition, setHeadPosition] = useState<THREE.Vector3>(
-    new THREE.Vector3(0, 1.6, 0)
+    new THREE.Vector3(0, 1.65, 0) // Face-level height
   );
+  const [isCameraInitialized, setIsCameraInitialized] = useState(false);
+
+  // Initialize audio analysis for real lip-sync
+  const initializeAudioAnalysis = useCallback(() => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      if (!analyserRef.current) {
+        analyserRef.current = audioContextRef.current.createAnalyser();
+        analyserRef.current.fftSize = 256;
+        analyserRef.current.smoothingTimeConstant = 0.8;
+      }
+    } catch (error) {
+      console.warn('Audio analysis initialization failed:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (scene) {
@@ -50,60 +117,171 @@ const VideoCallAvatar: React.FC<{
       });
       setMorphTargets(meshes);
 
-      // Calculate the head position for correct camera focus
+      // Calculate head position for camera targeting
       const head = getHeadPosition(scene);
       setHeadPosition(head);
+      console.log('👤 Avatar head position calculated:', head);
+      
+      // Initialize audio analysis for lip-sync
+      initializeAudioAnalysis();
+      
+      // Force camera initialization on next frame
+      setIsCameraInitialized(false);
     }
-  }, [scene]);
+  }, [scene, initializeAudioAnalysis]);
 
-  // Lip sync animation
-  const animateLipSync = useCallback(() => {
-    if (interviewState === InterviewState.SPEAKING) {
-      const time = Date.now() * 0.005;
-      const baseLip = Math.sin(time * 6) * 0.4 + 0.3;
-      const microMovements = Math.sin(time * 15) * 0.15;
-      const emphasis = Math.sin(time * 2) * 0.1;
-      const lipValue = Math.max(
-        0,
-        Math.min(1, baseLip + microMovements + emphasis)
+  // Force camera to focus on face when camera becomes available
+  useEffect(() => {
+    if (camera && headPosition && !isCameraInitialized) {
+      // Ensure we're looking at a reasonable head position
+      let adjustedHeadPosition = headPosition.clone();
+      
+      // If head position seems wrong (negative Y or too low), force it to a reasonable head height
+      if (adjustedHeadPosition.y < 1.0) {
+        adjustedHeadPosition.y = 1.65; // Standard head height for standing figure
+        console.log('⚠️ Force init: Head position too low, adjusted to:', adjustedHeadPosition);
+      }
+      
+      // Position camera very close for detailed facial animation visibility
+      const facePosition = new THREE.Vector3(
+        adjustedHeadPosition.x,
+        adjustedHeadPosition.y - 0.2, // Slightly lower to show upper body
+        adjustedHeadPosition.z + 1.8 // Much closer for clear lip-sync visibility
       );
+      
+      camera.position.copy(facePosition);
+      camera.lookAt(adjustedHeadPosition.x, adjustedHeadPosition.y - 0.1, adjustedHeadPosition.z);
+      setIsCameraInitialized(true);
+      
+      console.log('📷 Camera force-initialized for close-up view:', facePosition);
+      console.log('📷 Camera looking at face area:', { x: adjustedHeadPosition.x, y: adjustedHeadPosition.y - 0.1, z: adjustedHeadPosition.z });
+    }
+  }, [camera, headPosition, isCameraInitialized]);
+
+  // Enhanced lip sync animation with real audio analysis when available
+  const animateLipSync = useCallback(() => {
+    if (interviewState === InterviewState.SPEAKING || isAudioPlaying) {
+      let lipValue = 0;
+      
+      // Try to get real audio data first
+      if (analyserRef.current && audioContextRef.current?.state === 'running') {
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyserRef.current.getByteFrequencyData(dataArray);
+        
+        // Analyze frequency data for speech patterns
+        const lowFreq = dataArray.slice(0, 10).reduce((a, b) => a + b, 0) / 10; // Bass (vowels)
+        const midFreq = dataArray.slice(10, 40).reduce((a, b) => a + b, 0) / 30; // Mid (consonants)
+        const highFreq = dataArray.slice(40, 80).reduce((a, b) => a + b, 0) / 40; // High (sibilants)
+        
+        // Calculate lip movement based on audio energy
+        const totalEnergy = (lowFreq + midFreq + highFreq) / 3;
+        lipValue = Math.min(1, Math.max(0, totalEnergy / 128)); // Normalize to 0-1
+        
+        // Add some natural variation for speech patterns
+        const time = Date.now() * 0.003;
+        const naturalVariation = Math.sin(time * 6) * 0.1;
+        lipValue = Math.max(0, Math.min(1, lipValue + naturalVariation));
+      } else {
+        // Enhanced procedural animation for close-up visibility
+        const time = Date.now() * 0.01; // Even faster for close-up view
+        
+        // Very pronounced speech patterns for close-up visibility
+        const consonantPattern = Math.sin(time * 15) * 0.5; // Very pronounced consonants
+        const vowelPattern = Math.sin(time * 8) * 0.7 + 0.6; // Strong vowel sounds
+        const breathPattern = Math.sin(time * 2.5) * 0.2; // Natural breathing
+        const emphasisPattern = Math.sin(time * 5) * 0.3; // Strong speech emphasis
+        
+        // Combine patterns for maximum visibility in close-up
+        lipValue = Math.max(
+          0.15, // More base movement for close-up view
+          Math.min(1, (vowelPattern + consonantPattern + breathPattern + emphasisPattern) * 0.9)
+        );
+      }
+      
       setLipSyncValue(lipValue);
     } else {
-      setLipSyncValue((prev) => Math.max(0, prev - 0.08));
+      // Gradual return to neutral position
+      setLipSyncValue((prev) => Math.max(0, prev - 0.12));
     }
-  }, [interviewState]);
+  }, [interviewState, isAudioPlaying]);
 
-  // Eye blinking
+  // Connect audio element to analyzer for real lip-sync
+  const connectAudioElement = useCallback((audioElement: HTMLAudioElement) => {
+    try {
+      if (audioContextRef.current && analyserRef.current && !audioSourceRef.current) {
+        audioSourceRef.current = audioContextRef.current.createMediaElementSource(audioElement);
+        audioSourceRef.current.connect(analyserRef.current);
+        analyserRef.current.connect(audioContextRef.current.destination);
+        console.log('🔊 Audio element connected to lip-sync analyzer');
+      }
+    } catch (error) {
+      console.warn('Failed to connect audio element:', error);
+    }
+  }, []);
+
+  // Expose function to connect audio globally
+  useEffect(() => {
+    (window as any).connectAudioToLipSync = connectAudioElement;
+    return () => {
+      delete (window as any).connectAudioToLipSync;
+    };
+  }, [connectAudioElement]);
+
+  // Enhanced eye blinking with more visible animation
   const animateEyeBlink = useCallback(() => {
     const currentTime = Date.now();
     const timeSinceLastBlink = currentTime - lastBlinkTime.current;
-    if (timeSinceLastBlink > 1500 + Math.random() * 2500) {
+    
+    // More frequent blinking (1.5-3 seconds) for better visibility
+    const nextBlinkTime = 1500 + Math.random() * 1500;
+    
+    if (timeSinceLastBlink > nextBlinkTime) {
       lastBlinkTime.current = currentTime;
     }
-    const blinkProgress = (currentTime - lastBlinkTime.current) / 150;
+    
+    // Slightly longer blink duration for visibility (150-200ms)
+    const blinkDuration = 150 + Math.random() * 50;
+    const blinkProgress = (currentTime - lastBlinkTime.current) / blinkDuration;
+    
     if (blinkProgress < 1) {
-      const blinkValue = Math.sin(blinkProgress * Math.PI);
-      setEyeBlinkValue(blinkValue);
+      // More pronounced blink curve for visibility
+      const blinkCurve = blinkProgress < 0.3 
+        ? Math.sin(blinkProgress * 3.33 * Math.PI) * 0.9  // Faster close, more pronounced
+        : Math.sin((1 - blinkProgress) * 1.43 * Math.PI) * 0.8; // Slower open
+      setEyeBlinkValue(Math.max(0, blinkCurve));
     } else {
       setEyeBlinkValue(0);
     }
   }, []);
 
-  // Facial expression animation
+  // Enhanced facial expression animation with more visible gestures
   const animateExpression = useCallback(() => {
-    const time = Date.now() * 0.001;
+    const time = Date.now() * 0.002; // Slightly faster for more noticeable changes
+    const microExpression = Math.sin(time * 4) * 0.08; // More pronounced micro-expressions
+    
     switch (interviewState) {
       case InterviewState.SPEAKING:
-        setExpressionValue(0.7 + Math.sin(time * 2.5) * 0.15);
+        // More animated and expressive when speaking
+        const speakingBase = 0.7 + Math.sin(time * 3.2) * 0.18; // More variation
+        const speakingEnthusiasm = Math.sin(time * 1.5) * 0.12; // More enthusiasm
+        setExpressionValue(Math.min(1, speakingBase + speakingEnthusiasm + microExpression));
         break;
       case InterviewState.LISTENING:
-        setExpressionValue(0.4 + Math.sin(time * 1.5) * 0.08);
+        // More attentive and engaged expression
+        const listeningBase = 0.4 + Math.sin(time * 2.2) * 0.1; // More engagement
+        const attentiveness = Math.sin(time * 0.8) * 0.08; // More attentiveness
+        setExpressionValue(listeningBase + attentiveness + microExpression);
         break;
       case InterviewState.THINKING:
-        setExpressionValue(0.5 + Math.sin(time * 0.8) * 0.12);
+        // More thoughtful, concentrated expression
+        const thinkingBase = 0.2 + Math.sin(time * 1.1) * 0.12; // More concentration
+        const concentration = Math.sin(time * 0.5) * 0.1; // More visible thinking
+        setExpressionValue(thinkingBase + concentration + microExpression);
         break;
       default:
-        setExpressionValue(0.2 + Math.sin(time * 0.5) * 0.05);
+        // More welcoming neutral expression
+        setExpressionValue(0.3 + Math.sin(time * 0.8) * 0.06 + microExpression);
         break;
     }
   }, [interviewState]);
@@ -114,22 +292,22 @@ const VideoCallAvatar: React.FC<{
       if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
         const dict = mesh.morphTargetDictionary;
         if (dict["mouthOpen"] !== undefined) {
-          mesh.morphTargetInfluences[dict["mouthOpen"]] = lipSyncValue;
+          mesh.morphTargetInfluences[dict["mouthOpen"]] = lipSyncValue * 0.9; // Maximum visibility for close-up
         }
         if (dict["mouthWide"] !== undefined) {
-          mesh.morphTargetInfluences[dict["mouthWide"]] = lipSyncValue * 0.4;
+          mesh.morphTargetInfluences[dict["mouthWide"]] = lipSyncValue * 0.7; // Very visible for close-up
         }
         if (dict["mouthSmile"] !== undefined) {
-          mesh.morphTargetInfluences[dict["mouthSmile"]] = lipSyncValue * 0.3;
+          mesh.morphTargetInfluences[dict["mouthSmile"]] = lipSyncValue * 0.6; // Enhanced smile for close-up
         }
         if (dict["mouthFrown"] !== undefined) {
           mesh.morphTargetInfluences[dict["mouthFrown"]] = 0;
         }
         if (dict["eyeBlinkLeft"] !== undefined) {
-          mesh.morphTargetInfluences[dict["eyeBlinkLeft"]] = eyeBlinkValue;
+          mesh.morphTargetInfluences[dict["eyeBlinkLeft"]] = eyeBlinkValue * 0.9; // More visible blink
         }
         if (dict["eyeBlinkRight"] !== undefined) {
-          mesh.morphTargetInfluences[dict["eyeBlinkRight"]] = eyeBlinkValue;
+          mesh.morphTargetInfluences[dict["eyeBlinkRight"]] = eyeBlinkValue * 0.9; // More visible blink
         }
         if (dict["smile"] !== undefined) {
           mesh.morphTargetInfluences[dict["smile"]] = expressionValue;
@@ -167,10 +345,10 @@ const VideoCallAvatar: React.FC<{
           mesh.morphTargetInfluences[dict["noseSneer"]] = 0;
         }
         if (dict["jawOpen"] !== undefined) {
-          mesh.morphTargetInfluences[dict["jawOpen"]] = lipSyncValue * 0.6;
+          mesh.morphTargetInfluences[dict["jawOpen"]] = lipSyncValue * 0.8; // Maximum jaw movement for close-up
         }
         if (dict["jawForward"] !== undefined) {
-          mesh.morphTargetInfluences[dict["jawForward"]] = lipSyncValue * 0.2;
+          mesh.morphTargetInfluences[dict["jawForward"]] = lipSyncValue * 0.4; // Enhanced jaw articulation for close-up
         }
         if (dict["jawLeft"] !== undefined) {
           mesh.morphTargetInfluences[dict["jawLeft"]] = 0;
@@ -239,16 +417,48 @@ const VideoCallAvatar: React.FC<{
     if (mixerRef.current) {
       mixerRef.current.update(delta);
     }
+    
+    // Run facial animations every frame for smooth motion
     animateLipSync();
-    animateExpression();
+    animateExpression(); 
     animateEyeBlink();
-    // Camera always looks at head position and is placed in front of face
-    if (camera && headPosition) {
-      // Position camera at face level, slightly above eye level for better framing
-      // const cameraY = headPosition.y + 0.1; // Slightly above eye level
-      camera.position.set(headPosition.x, headPosition.y, headPosition.z + 3); // Further back to show full face
-      // Look directly at the face/eyes area
-      camera.lookAt(headPosition.x, headPosition.y, headPosition.z);
+    // Initialize camera to always focus on face (only once or when head position changes significantly)
+    if (camera && headPosition && (!isCameraInitialized || camera.position.distanceTo(new THREE.Vector3(headPosition.x, headPosition.y, headPosition.z + 1.8)) > 0.3)) {
+      
+      // Ensure we're looking at a reasonable head position (should be positive Y for standing figure)
+      let adjustedHeadPosition = headPosition.clone();
+      
+      // If head position seems wrong (negative Y or too low), force it to a reasonable head height
+      if (adjustedHeadPosition.y < 1.0) {
+        adjustedHeadPosition.y = 1.65; // Standard head height for standing figure
+        console.log('⚠️ Head position seemed too low, adjusted to:', adjustedHeadPosition);
+      }
+      
+      // Position camera very close for maximum facial detail and lip-sync visibility
+      const optimalCameraPos = new THREE.Vector3(
+        adjustedHeadPosition.x,           // Center horizontally
+        adjustedHeadPosition.y - 0.1,     // Just slightly lower for natural angle
+        adjustedHeadPosition.z + 1.8      // Very close for clear facial animations
+      );
+      
+      // Smooth camera movement to avoid jarring transitions
+      if (isCameraInitialized) {
+        camera.position.lerp(optimalCameraPos, 0.02);
+      } else {
+        camera.position.copy(optimalCameraPos);
+        setIsCameraInitialized(true);
+      }
+      
+      // Look at face/neck area for close-up framing with clear facial detail
+      const upperBodyTarget = new THREE.Vector3(
+        adjustedHeadPosition.x, 
+        adjustedHeadPosition.y - 0.1, // Focus on face/neck for close-up view
+        adjustedHeadPosition.z
+      );
+      camera.lookAt(upperBodyTarget);
+      
+      console.log('📷 Camera positioned for close-up at:', optimalCameraPos);
+      console.log('📷 Camera looking at face close-up:', upperBodyTarget);
     }
   });
 
@@ -259,6 +469,18 @@ const VideoCallAvatar: React.FC<{
       }
     };
   }, []);
+
+  // Immediately detect head position when model loads to prevent feet initialization
+  useEffect(() => {
+    if (modelRef.current && scene) {
+      // Quick head detection on model load
+      const headPos = getHeadPosition(modelRef.current);
+      if (headPos && headPos.y > 1.0) {
+        setHeadPosition(headPos);
+        console.log('🚀 Immediate head detection on model load:', headPos);
+      }
+    }
+  }, [scene, getHeadPosition, setHeadPosition]);
 
   // Place avatar at origin, face forward, scale up for close-up
   return (
@@ -322,7 +544,7 @@ const FallbackAvatar: React.FC<{ interviewState: InterviewState }> = ({
   );
 };
 
-const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState }) => {
+const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlaying = false }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [useFallback, setUseFallback] = useState(false);
@@ -400,8 +622,8 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState }) => {
       {/* 3D Character Canvas */}
       <Canvas
         camera={{
-          position: [0, 1.7, 2.2], // Initial position further back to show full face
-          fov: 25,
+          position: [0, 1.6, 1.8], // Much closer to camera for detailed facial visibility
+          fov: 28, // Tighter zoom for close-up view
           near: 0.1,
           far: 1000,
         }}
@@ -412,8 +634,8 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState }) => {
           preserveDrawingBuffer: true,
           powerPreference: "high-performance",
         }}
-        onCreated={({ camera }) => {
-          (cameraRef as any).current = camera as THREE.PerspectiveCamera;
+        onCreated={(state: any) => {
+          (cameraRef as any).current = state.camera as THREE.PerspectiveCamera;
         }}
       >
         {/* Lights */}
@@ -436,6 +658,7 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState }) => {
         <VideoCallAvatar
           interviewState={interviewState}
           camera={cameraRef.current}
+          isAudioPlaying={isAudioPlaying}
         />
 
         {/* Environment lighting */}

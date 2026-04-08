@@ -57,11 +57,18 @@ import { Separator } from "../../ui/separator";
 import { Badge } from "../../ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
+const SETTINGS_CARD_SURFACE =
+  "rounded-2xl border border-slate-200/80 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 backdrop-blur-sm shadow-sm hover:shadow-md transition-all duration-300";
+const SETTINGS_MUTED_SURFACE =
+  "rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/90 dark:bg-slate-900/60";
+
 // Enhanced Follow Requests Manager Component
 const FollowRequestsManager: React.FC = () => {
   const [followRequests, setFollowRequests] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const { success, error } = useToast();
+  const navigate = useNavigate();
 
   const fetchFollowRequests = async () => {
     try {
@@ -126,9 +133,50 @@ const FollowRequestsManager: React.FC = () => {
     }
   };
 
+  const handleBulkAction = async (action: "accept" | "reject") => {
+    const userIds = Array.from(selectedIds);
+    if (userIds.length === 0) {
+      error("No requests selected", "Select at least one request first.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch(
+        "http://localhost:5000/api/users/follow-requests/bulk",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({ action, userIds }),
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.message || `Bulk ${action} failed`);
+      }
+
+      success(
+        action === "accept"
+          ? "Selected requests accepted"
+          : "Selected requests rejected"
+      );
+      setSelectedIds(new Set());
+      await fetchFollowRequests();
+    } catch (err: any) {
+      console.error(`Error bulk ${action}:`, err);
+      error(`Failed to ${action} selected`, err?.message || "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
-      <Card>
+      <Card className={SETTINGS_CARD_SURFACE}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-6 w-6" />
@@ -146,13 +194,38 @@ const FollowRequestsManager: React.FC = () => {
   }
 
   return (
-    <Card>
+    <Card className={SETTINGS_CARD_SURFACE}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
           <Users className="h-6 w-6" />
           Follow Requests ({followRequests.length})
         </CardTitle>
         <CardDescription>Manage incoming follow requests</CardDescription>
+        <div className="flex flex-wrap items-center gap-2 pt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate("/follow-requests")}
+          >
+            Open Full Manager
+          </Button>
+          <Button
+            size="sm"
+            className="bg-green-600 hover:bg-green-700"
+            disabled={selectedIds.size === 0 || loading}
+            onClick={() => handleBulkAction("accept")}
+          >
+            Accept Selected
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={selectedIds.size === 0 || loading}
+            onClick={() => handleBulkAction("reject")}
+          >
+            Reject Selected
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {followRequests.length === 0 ? (
@@ -165,9 +238,25 @@ const FollowRequestsManager: React.FC = () => {
             {followRequests.map((request) => (
               <div
                 key={request._id}
-                className="flex items-center justify-between p-4 border rounded-lg"
+                className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40"
               >
                 <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={selectedIds.has(request._id)}
+                    onChange={() => {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(request._id)) {
+                          next.delete(request._id);
+                        } else {
+                          next.add(request._id);
+                        }
+                        return next;
+                      });
+                    }}
+                  />
                   <Avatar className="h-10 w-10">
                     <AvatarImage src={request.profilePicture} />
                     <AvatarFallback>
@@ -265,7 +354,7 @@ const BlockedUsersManager: React.FC = () => {
 
   if (loading) {
     return (
-      <Card>
+      <Card className={SETTINGS_CARD_SURFACE}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserX className="h-6 w-6" />
@@ -283,9 +372,9 @@ const BlockedUsersManager: React.FC = () => {
   }
 
   return (
-    <Card>
+    <Card className={SETTINGS_CARD_SURFACE}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
           <UserX className="h-6 w-6" />
           Blocked Users ({blockedUsers.length})
         </CardTitle>
@@ -302,7 +391,7 @@ const BlockedUsersManager: React.FC = () => {
             {blockedUsers.map((user) => (
               <div
                 key={user._id}
-                className="flex items-center justify-between p-4 border rounded-lg"
+                className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40"
               >
                 <div className="flex items-center gap-3">
                   <Avatar className="h-10 w-10">
@@ -342,24 +431,33 @@ const ToggleSwitch: React.FC<{
   description: string;
   icon: React.ReactNode;
 }> = ({ checked, onCheckedChange, label, description, icon }) => (
-  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+  <div className="group flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/60 hover:border-cyan-300 dark:hover:border-cyan-700 hover:shadow-md transition-all duration-300">
     <div className="flex items-center space-x-3">
-      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+      <div className="w-10 h-10 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
         {icon}
       </div>
       <div>
-        <h4 className="font-medium text-gray-900">{label}</h4>
-        <p className="text-sm text-gray-600">{description}</p>
+        <h4 className="font-medium text-slate-900 dark:text-slate-100">{label}</h4>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
       </div>
     </div>
-    <Button
-      variant={checked ? "default" : "outline"}
-      size="sm"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
-      className={checked ? "bg-green-600 hover:bg-green-700" : ""}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ${
+        checked
+          ? "bg-gradient-to-r from-cyan-500 to-emerald-500 shadow-lg shadow-cyan-500/30"
+          : "bg-slate-300 dark:bg-slate-600"
+      }`}
     >
-      {checked ? "Enabled" : "Disabled"}
-    </Button>
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 ${
+          checked ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
   </div>
 );
 
@@ -374,7 +472,9 @@ const SettingsPage: React.FC = () => {
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(
     null
   );
-  const usernameDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const [settings, setSettings] = useState({
     username: "",
     email: "",
@@ -401,6 +501,17 @@ const SettingsPage: React.FC = () => {
   const [deletePassword, setDeletePassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [emailForm, setEmailForm] = useState({
+    newEmail: "",
+    currentPassword: "",
+  });
   const [editProfileData, setEditProfileData] = useState({
     name: "",
     firstName: "",
@@ -461,6 +572,11 @@ const SettingsPage: React.FC = () => {
         emails: [user.email] || [],
         profilePicture: user.profilePicture || "",
       });
+
+      setEmailForm((prev) => ({
+        ...prev,
+        newEmail: user.email || "",
+      }));
     }
   }, [user]);
 
@@ -707,6 +823,118 @@ const SettingsPage: React.FC = () => {
       error("Failed to update username", "Please try again.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    const newPassword = passwordForm.newPassword.trim();
+    const confirmPassword = passwordForm.confirmPassword.trim();
+
+    if (!newPassword) {
+      warning("New password required", "Please enter a new password.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      warning(
+        "Password too short",
+        "New password must be at least 6 characters."
+      );
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      warning("Passwords do not match", "Please confirm your new password.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    try {
+      const payload: Record<string, string> = { newPassword };
+      if (passwordForm.currentPassword.trim()) {
+        payload.currentPassword = passwordForm.currentPassword.trim();
+      }
+
+      const response = await fetch("http://localhost:5000/api/auth/change-password", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+        success("Password updated", data.message || "Password updated successfully.");
+      } else {
+        error("Failed to update password", data.message || "Unknown error");
+      }
+    } catch (err) {
+      console.error("Error changing password:", err);
+      error("Failed to update password", "Please try again.");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    const newEmail = emailForm.newEmail.trim().toLowerCase();
+    if (!newEmail) {
+      warning("Email required", "Please enter a new email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      warning("Invalid email", "Please enter a valid email address.");
+      return;
+    }
+
+    if (newEmail === (user?.email || "").toLowerCase()) {
+      info("No changes", "Please enter a different email address.");
+      return;
+    }
+
+    setIsChangingEmail(true);
+    try {
+      const payload: Record<string, string> = { newEmail };
+      if (emailForm.currentPassword.trim()) {
+        payload.currentPassword = emailForm.currentPassword.trim();
+      }
+
+      const response = await fetch("http://localhost:5000/api/auth/change-email", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        if (data?.data?.user) {
+          await updateProfile(data.data.user);
+        }
+        setSettings((prev) => ({ ...prev, email: newEmail }));
+        setEmailForm((prev) => ({ ...prev, currentPassword: "" }));
+        success(
+          "Email updated",
+          data.message || "Your email has been updated successfully."
+        );
+      } else {
+        error("Failed to change email", data.message || "Unknown error");
+      }
+    } catch (err) {
+      console.error("Error changing email:", err);
+      error("Failed to change email", "Please try again.");
+    } finally {
+      setIsChangingEmail(false);
     }
   };
 
@@ -1274,58 +1502,59 @@ const SettingsPage: React.FC = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="min-h-screen bg-gray-50 dark:bg-gray-900"
+        className="min-h-screen bg-[radial-gradient(circle_at_top_left,#ecfeff,transparent_40%),radial-gradient(circle_at_top_right,#fef9c3,transparent_35%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] dark:bg-[radial-gradient(circle_at_top_left,#082f49,transparent_40%),radial-gradient(circle_at_top_right,#172554,transparent_35%),linear-gradient(180deg,#020617_0%,#0f172a_100%)]"
+        style={{ fontFamily: '"Sora", "Space Grotesk", "Segoe UI", sans-serif' }}
       >
         {/* Modal-like Container */}
-        <div className="max-w-6xl mx-auto p-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
-            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+            className="rounded-3xl border border-slate-200/80 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-[0_20px_80px_rgba(2,8,23,0.12)] overflow-hidden"
           >
             {/* Header with Close Button */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between p-6 sm:p-8 border-b border-slate-200/70 dark:border-slate-700/60 bg-white/70 dark:bg-slate-900/30">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                <h1 className="text-2xl sm:text-3xl tracking-tight font-semibold text-slate-900 dark:text-slate-100">
                   Settings
                 </h1>
-                <p className="text-gray-600 dark:text-gray-400 mt-1">
-                  Manage your account preferences and privacy settings
+                <p className="text-slate-600 dark:text-slate-400 mt-1 text-sm sm:text-base">
+                  Fine-tune account, privacy, and notifications with a cleaner control center.
                 </p>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate(-1)}
-                className="h-10 w-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="h-10 w-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="h-5 w-5" />
               </Button>
             </div>
 
             {/* Two-Pane Layout */}
-            <div className="flex min-h-[600px]">
+            <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] min-h-[680px]">
               {/* Left Pane - Navigation */}
-              <div className="w-80 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 p-6">
-                <div className="space-y-6">
+              <div className="bg-slate-50/80 dark:bg-slate-950/50 border-r border-slate-200/70 dark:border-slate-700/60 p-6 lg:p-7">
+                <div className="space-y-6 lg:sticky lg:top-6">
                   {/* Account Section */}
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-                      Account
+                    <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1 tracking-tight">
+                      Workspace
                     </h2>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                      Manage your account info.
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                      Navigate quickly between preference groups.
                     </p>
 
                     {/* Navigation Menu */}
                     <div className="space-y-2">
                       <button
                         onClick={() => setActiveTab("account")}
-                        className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-all duration-200 ${
+                        className={`w-full flex items-center space-x-3 p-3.5 rounded-xl text-left transition-all duration-300 border ${
                           activeTab === "account"
-                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700 shadow-sm"
+                            : "text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900/40"
                         }`}
                       >
                         <User className="h-5 w-5" />
@@ -1334,10 +1563,10 @@ const SettingsPage: React.FC = () => {
 
                       <button
                         onClick={() => setActiveTab("privacy")}
-                        className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-all duration-200 ${
+                        className={`w-full flex items-center space-x-3 p-3.5 rounded-xl text-left transition-all duration-300 border ${
                           activeTab === "privacy"
-                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700 shadow-sm"
+                            : "text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900/40"
                         }`}
                       >
                         <Shield className="h-5 w-5" />
@@ -1346,10 +1575,10 @@ const SettingsPage: React.FC = () => {
 
                       <button
                         onClick={() => setActiveTab("notifications")}
-                        className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-all duration-200 ${
+                        className={`w-full flex items-center space-x-3 p-3.5 rounded-xl text-left transition-all duration-300 border ${
                           activeTab === "notifications"
-                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                            ? "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700 shadow-sm"
+                            : "text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900/40"
                         }`}
                       >
                         <Bell className="h-5 w-5" />
@@ -1359,22 +1588,25 @@ const SettingsPage: React.FC = () => {
                   </div>
 
                   {/* Footer Info */}
-                  <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
                     {/* Footer content removed - keeping the border for visual separation */}
                   </div>
                 </div>
               </div>
 
               {/* Right Pane - Content */}
-              <div className="flex-1 p-6 bg-white dark:bg-gray-800">
+              <div className="p-6 sm:p-8 bg-white/60 dark:bg-slate-900/20">
                 {/* Content Header */}
                 <div className="mb-6">
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  <h2 className="text-xl sm:text-2xl tracking-tight font-semibold text-slate-900 dark:text-slate-100">
                     {activeTab === "account" && "Profile details"}
                     {activeTab === "privacy" && "Security settings"}
                     {activeTab === "notifications" &&
                       "Notification preferences"}
                   </h2>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                    Changes are local until you hit Save Settings.
+                  </p>
                 </div>
 
                 {/* Content Area */}
@@ -1383,7 +1615,7 @@ const SettingsPage: React.FC = () => {
                   {activeTab === "account" && (
                     <div className="space-y-6">
                       {/* Profile Section */}
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                      <div className={`${SETTINGS_MUTED_SURFACE} p-5`}>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
                           Profile
                         </h3>
@@ -1415,7 +1647,7 @@ const SettingsPage: React.FC = () => {
                       </div>
 
                       {/* Username Management Section */}
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                      <div className={`${SETTINGS_MUTED_SURFACE} p-5`}>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
                           Username
                         </h3>
@@ -1481,7 +1713,7 @@ const SettingsPage: React.FC = () => {
                       </div>
 
                       {/* Email Addresses Section */}
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                      <div className={`${SETTINGS_MUTED_SURFACE} p-5`}>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
                           Email addresses
                         </h3>
@@ -1515,7 +1747,7 @@ const SettingsPage: React.FC = () => {
                       </div>
 
                       {/* Connected Accounts Section */}
-                      <div className="bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                      <div className={`${SETTINGS_MUTED_SURFACE} p-5`}>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
                           Connected accounts
                         </h3>
@@ -1554,7 +1786,7 @@ const SettingsPage: React.FC = () => {
                   {activeTab === "privacy" && (
                     <div className="space-y-6">
                       {/* Account Information */}
-                      <Card className="bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700">
+                      <Card className={SETTINGS_CARD_SURFACE}>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
                             <User className="h-6 w-6" />
@@ -1572,21 +1804,19 @@ const SettingsPage: React.FC = () => {
                                   htmlFor="email"
                                   className="text-sm font-medium text-gray-700 dark:text-gray-300"
                                 >
-                                  Email
+                                  Current email
                                 </Label>
                                 <Input
                                   id="email"
                                   value={settings.email}
-                                  onChange={(e) =>
-                                    setSettings((prev) => ({
-                                      ...prev,
-                                      email: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Enter email"
+                                  readOnly
                                   type="email"
                                   className="mt-2"
                                 />
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                  Use the Security Settings section below to
+                                  change your email.
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -1594,7 +1824,7 @@ const SettingsPage: React.FC = () => {
                       </Card>
 
                       {/* Privacy Settings */}
-                      <Card className="bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700">
+                      <Card className={SETTINGS_CARD_SURFACE}>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
                             <Shield className="h-6 w-6" />
@@ -1849,7 +2079,7 @@ const SettingsPage: React.FC = () => {
                       </Card>
 
                       {/* Security Settings */}
-                      <Card className="bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700">
+                      <Card className={SETTINGS_CARD_SURFACE}>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
                             <Lock className="h-6 w-6" />
@@ -1874,11 +2104,148 @@ const SettingsPage: React.FC = () => {
                               icon={<Lock className="h-5 w-5 text-blue-600" />}
                             />
                           </div>
+
+                          <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                            <h4 className="font-semibold text-gray-900 dark:text-white">
+                              Change password
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Current password
+                                </Label>
+                                <Input
+                                  type="password"
+                                  value={passwordForm.currentPassword}
+                                  onChange={(e) =>
+                                    setPasswordForm((prev) => ({
+                                      ...prev,
+                                      currentPassword: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Current password"
+                                  className="mt-2"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  New password
+                                </Label>
+                                <Input
+                                  type="password"
+                                  value={passwordForm.newPassword}
+                                  onChange={(e) =>
+                                    setPasswordForm((prev) => ({
+                                      ...prev,
+                                      newPassword: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="New password"
+                                  className="mt-2"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Confirm new password
+                                </Label>
+                                <Input
+                                  type="password"
+                                  value={passwordForm.confirmPassword}
+                                  onChange={(e) =>
+                                    setPasswordForm((prev) => ({
+                                      ...prev,
+                                      confirmPassword: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Confirm new password"
+                                  className="mt-2"
+                                />
+                              </div>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              For Google-only accounts, leave current password
+                              empty to set your first password.
+                            </p>
+                            <div className="flex justify-end">
+                              <Button
+                                onClick={handleChangePassword}
+                                disabled={isChangingPassword}
+                                className="bg-blue-600 hover:bg-blue-700"
+                              >
+                                {isChangingPassword ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    Updating...
+                                  </>
+                                ) : (
+                                  "Update password"
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                            <h4 className="font-semibold text-gray-900 dark:text-white">
+                              Change email
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  New email
+                                </Label>
+                                <Input
+                                  type="email"
+                                  value={emailForm.newEmail}
+                                  onChange={(e) =>
+                                    setEmailForm((prev) => ({
+                                      ...prev,
+                                      newEmail: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Enter new email"
+                                  className="mt-2"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  Current password (if set)
+                                </Label>
+                                <Input
+                                  type="password"
+                                  value={emailForm.currentPassword}
+                                  onChange={(e) =>
+                                    setEmailForm((prev) => ({
+                                      ...prev,
+                                      currentPassword: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Current password"
+                                  className="mt-2"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <Button
+                                onClick={handleChangeEmail}
+                                disabled={isChangingEmail}
+                                className="bg-blue-600 hover:bg-blue-700"
+                              >
+                                {isChangingEmail ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    Updating...
+                                  </>
+                                ) : (
+                                  "Update email"
+                                )}
+                              </Button>
+                            </div>
+                          </div>
                         </CardContent>
                       </Card>
 
                       {/* Danger Zone */}
-                      <Card className="border-red-200 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 dark:border-red-800">
+                      <Card className="rounded-2xl border border-rose-200/80 dark:border-rose-800/70 bg-gradient-to-br from-rose-50 to-amber-50 dark:from-rose-950/40 dark:to-amber-950/30 shadow-sm">
                         <CardHeader>
                           <CardTitle className="text-red-600 dark:text-red-400 flex items-center gap-2">
                             <AlertTriangle className="h-6 w-6" />
@@ -1918,7 +2285,7 @@ const SettingsPage: React.FC = () => {
                   {activeTab === "notifications" && (
                     <div className="space-y-6">
                       {/* Notification Preferences */}
-                      <Card className="bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700">
+                      <Card className={SETTINGS_CARD_SURFACE}>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
                             <Bell className="h-6 w-6" />
@@ -2019,11 +2386,11 @@ const SettingsPage: React.FC = () => {
                 </div>
 
                 {/* Save Button */}
-                <div className="flex justify-end pt-6 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex justify-end pt-6 border-t border-slate-200 dark:border-slate-700">
                   <Button
                     onClick={handleSaveSettings}
                     disabled={isSaving}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-8 py-3"
+                    className="flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 px-8 py-3 text-white shadow-lg shadow-cyan-600/30 rounded-xl"
                   >
                     {isSaving ? (
                       <>

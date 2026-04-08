@@ -19,9 +19,27 @@ router.get(
       .sort({ createdAt: -1 })
       .limit(50);
 
+    const normalizedNotifications = notifications.map((notification) => {
+      const obj = notification.toObject();
+      return {
+        ...obj,
+        id: obj._id,
+        isRead: !!obj.read,
+      };
+    });
+
+    const unreadCount = normalizedNotifications.filter(
+      (notification) => !notification.isRead
+    ).length;
+
     res.json({
       success: true,
-      notifications,
+      notifications: normalizedNotifications,
+      unreadCount,
+      data: {
+        notifications: normalizedNotifications,
+        unreadCount,
+      },
     });
   })
 );
@@ -53,11 +71,53 @@ router.put(
   })
 );
 
+// Compatibility alias used by some frontend paths.
+router.post(
+  "/:id/read",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { read: true },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      notification,
+    });
+  })
+);
+
 // @desc    Mark all notifications as read
 // @route   PUT /api/notifications/mark-all-read
 // @access  Private
 router.put(
   "/mark-all-read",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    await Notification.updateMany(
+      { userId: req.user.id, read: false },
+      { read: true }
+    );
+
+    res.json({
+      success: true,
+      message: "All notifications marked as read",
+    });
+  })
+);
+
+// Compatibility alias used by social notification context.
+router.post(
+  "/read-all",
   authenticateToken,
   asyncHandler(async (req, res) => {
     await Notification.updateMany(

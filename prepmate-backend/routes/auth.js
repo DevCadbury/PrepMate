@@ -124,6 +124,11 @@ passport.use(
         if (user) {
           console.log("Existing user found:", user.email);
 
+          // Link Google identity to existing email account for unified sign-in.
+          if (!user.googleId) {
+            user.googleId = id;
+          }
+
           // Update last login
           user.lastLogin = new Date();
 
@@ -404,6 +409,14 @@ router.post(
     }
 
     // Check password
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This account currently uses Google sign-in. Set a password from Settings to enable email/password login.",
+      });
+    }
+
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -654,12 +667,18 @@ router.post(
     }
 
     const { email } = req.body;
+    const normalizedEmail = String(email).toLowerCase();
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
+      // Avoid account enumeration and keep UX consistent.
+      return res.json({
+        success: true,
+        message:
+          "If an account exists for this email, a password reset link has been sent.",
+        data: {
+          emailSent: true,
+        },
       });
     }
 
@@ -668,19 +687,32 @@ router.post(
     await user.save();
 
     // Send password reset email
+    let emailSent = true;
     try {
       await sendPasswordResetEmail(user.email, resetToken);
     } catch (error) {
+      emailSent = false;
       logger.error("Failed to send password reset email:", error);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send password reset email",
-      });
+
+      if (process.env.NODE_ENV === "production") {
+        return res.status(500).json({
+          success: false,
+          message: "Failed to send password reset email",
+        });
+      }
+    }
+
+    const responseData = { emailSent };
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      responseData.resetToken = resetToken;
+      responseData.resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
     }
 
     res.json({
       success: true,
-      message: "Password reset email sent",
+      message:
+        "If an account exists for this email, a password reset link has been sent.",
+      data: responseData,
     });
   })
 );
@@ -893,9 +925,7 @@ router.put(
   "/change-password",
   authenticateToken,
   [
-    body("currentPassword")
-      .notEmpty()
-      .withMessage("Current password is required"),
+    body("currentPassword").optional().isString(),
     body("newPassword")
       .isLength({ min: 6 })
       .withMessage("New password must be at least 6 characters"),
@@ -913,14 +943,31 @@ router.put(
     const { currentPassword, newPassword } = req.body;
 
     const user = await User.findById(req.user.id).select("+password");
-
-    // Check current password
-    const isPasswordValid = await user.comparePassword(currentPassword);
-    if (!isPasswordValid) {
-      return res.status(400).json({
+    if (!user) {
+      return res.status(404).json({
         success: false,
-        message: "Current password is incorrect",
+        message: "User not found",
       });
+    }
+
+    const hasPassword = !!user.password;
+
+    if (hasPassword) {
+      if (!currentPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password is required",
+        });
+      }
+
+      // Check current password
+      const isPasswordValid = await user.comparePassword(currentPassword);
+      if (!isPasswordValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password is incorrect",
+        });
+      }
     }
 
     // Update password
@@ -929,7 +976,180 @@ router.put(
 
     res.json({
       success: true,
-      message: "Password changed successfully",
+      message: hasPassword
+        ? "Password changed successfully"
+        : "Password set successfully",
+    });
+  })
+);
+
+// @desc    Change account email
+// @route   PUT /api/auth/change-email
+// @access  Private
+router.put(
+  "/change-email",
+  authenticateToken,
+  [
+    body("newEmail")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid email"),
+    body("currentPassword").optional().isString(),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
+    const { newEmail, currentPassword } = req.body;
+    const normalizedEmail = String(newEmail).toLowerCase();
+
+    const user = await User.findById(req.user.id).select("+password");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.email === normalizedEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "New email must be different from current email",
+      });
+    }
+
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+      _id: { $ne: user._id },
+    });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already in use",
+      });
+    }
+
+    if (user.password) {
+      if (!currentPassword) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password is required",
+        });
+      }
+
+      const isPasswordValid = await user.comparePassword(currentPassword);
+      if (!isPasswordValid) {
+        return res.status(400).json({
+          success: false,
+          message: "Current password is incorrect",
+        });
+      }
+    }
+
+    user.email = normalizedEmail;
+    user.emailVerified = false;
+    const verificationToken = user.generateEmailVerificationToken();
+    await user.save();
+
+    let emailSent = true;
+    try {
+      await sendVerificationEmail(user.email, verificationToken);
+    } catch (sendError) {
+      emailSent = false;
+      logger.error("Failed to send verification email after email change:", sendError);
+    }
+
+    const responseData = {
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        emailVerified: user.emailVerified,
+        profilePicture: user.profilePicture,
+        profile: user.profile,
+        progress: user.progress,
+        metrics: user.metrics,
+      },
+      emailSent,
+    };
+
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      responseData.verificationToken = verificationToken;
+    }
+
+    res.json({
+      success: true,
+      message: emailSent
+        ? "Email changed successfully. Please verify your new email address."
+        : "Email changed successfully, but verification email could not be sent. Please check email configuration.",
+      data: responseData,
+    });
+  })
+);
+
+// @desc    Unlink Google account
+// @route   POST /api/auth/unlink-google
+// @access  Private
+router.post(
+  "/unlink-google",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const { newPassword } = req.body;
+
+    const user = await User.findById(req.user.id).select("+password");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!user.googleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Google account is not linked",
+      });
+    }
+
+    if (!user.password) {
+      if (!newPassword || String(newPassword).length < 6) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Set a password (at least 6 characters) before unlinking Google to keep access to your account",
+        });
+      }
+      user.password = String(newPassword);
+    }
+
+    user.googleId = undefined;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Google account unlinked successfully",
+      data: {
+        user: {
+          id: user._id,
+          username: user.username,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          emailVerified: user.emailVerified,
+          profilePicture: user.profilePicture,
+          profile: user.profile,
+          progress: user.progress,
+          metrics: user.metrics,
+        },
+      },
     });
   })
 );
@@ -1027,70 +1247,82 @@ router.get(
   })
 );
 
+const usernameValidationRules = [
+  body("username")
+    .trim()
+    .isLength({ min: 3, max: 30 })
+    .withMessage("Username must be between 3 and 30 characters")
+    .matches(/^[a-zA-Z0-9_]+$/)
+    .withMessage("Username can only contain letters, numbers, and underscores"),
+];
+
+const updateUsernameHandler = asyncHandler(async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: errors.array(),
+    });
+  }
+
+  const { username } = req.body;
+  const userId = req.user.id;
+
+  // Check if username is already taken
+  const existingUser = await User.findOne({
+    username: username.toLowerCase(),
+    _id: { $ne: userId }, // Exclude current user
+  });
+
+  if (existingUser) {
+    return res.status(400).json({
+      success: false,
+      message: "Username is already taken",
+    });
+  }
+
+  // Update user's username
+  const updatedUser = await User.findByIdAndUpdate(
+    userId,
+    { username: username.toLowerCase() },
+    { new: true, runValidators: true }
+  ).select("-password");
+
+  if (!updatedUser) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
+    });
+  }
+
+  res.json({
+    success: true,
+    message: "Username updated successfully",
+    data: {
+      user: updatedUser,
+    },
+  });
+});
+
 // @desc    Set username for user
 // @route   POST /api/auth/set-username
 // @access  Private
 router.post(
   "/set-username",
   authenticateToken,
-  [
-    body("username")
-      .trim()
-      .isLength({ min: 3, max: 30 })
-      .withMessage("Username must be between 3 and 30 characters")
-      .matches(/^[a-zA-Z0-9_]+$/)
-      .withMessage(
-        "Username can only contain letters, numbers, and underscores"
-      ),
-  ],
-  asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
+  usernameValidationRules,
+  updateUsernameHandler
+);
 
-    const { username } = req.body;
-    const userId = req.user.id;
-
-    // Check if username is already taken
-    const existingUser = await User.findOne({
-      username: username.toLowerCase(),
-      _id: { $ne: userId }, // Exclude current user
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "Username is already taken",
-      });
-    }
-
-    // Update user's username
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { username: username.toLowerCase() },
-      { new: true, runValidators: true }
-    ).select("-password");
-
-    if (!updatedUser) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Username updated successfully",
-      data: {
-        user: updatedUser,
-      },
-    });
-  })
+// @desc    Update username (frontend compatibility alias)
+// @route   PUT /api/auth/update-username
+// @access  Private
+router.put(
+  "/update-username",
+  authenticateToken,
+  usernameValidationRules,
+  updateUsernameHandler
 );
 
 // @desc    Complete Google OAuth user profile

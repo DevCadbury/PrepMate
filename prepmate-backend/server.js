@@ -2,12 +2,13 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const helmet = require("helmet");
+const path = require("path");
 const rateLimit = require("express-rate-limit");
 const passport = require("passport");
 const session = require("express-session");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
-require("dotenv").config();
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
 // Import routes
 const authRoutes = require("./routes/auth");
@@ -18,8 +19,10 @@ const socialRoutes = require("./routes/social");
 const profileRoutes = require("./routes/profile");
 const usersRoutes = require("./routes/users");
 const notificationsRoutes = require("./routes/notifications");
+const commentsRoutes = require("./routes/comments");
 const chatRoutes = require("./routes/chat");
 const healthRoutes = require("./routes/health");
+const aiRoutes = require("./routes/ai");
 
 // Import utilities
 const logger = require("./utils/logger");
@@ -137,9 +140,10 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/users", usersRoutes);
 // Notifications routes - uncommented to fix notification fetching
 app.use("/api/notifications", notificationsRoutes);
-// Temporarily commented out to isolate the issue
-// app.use("/api/comments", commentsRoutes);
+app.use("/api/social/notifications", notificationsRoutes);
+app.use("/api/comments", commentsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Health check routes
 app.use("/health", healthRoutes);
@@ -179,18 +183,125 @@ app.use("*", (req, res) => {
 
 // Start server
 const PORT = process.env.PORT || 5000;
+const MONGODB_URI =
+  process.env.MONGODB_URI || "mongodb://localhost:27017/prepmate";
+const MONGODB_URI_FALLBACK = process.env.MONGODB_URI_FALLBACK;
+const MONGODB_URI_LOCAL =
+  process.env.MONGODB_URI_LOCAL || "mongodb://127.0.0.1:27017/prepmate";
+const ALLOW_START_WITHOUT_DB =
+  process.env.ALLOW_START_WITHOUT_DB === "true" ||
+  process.env.NODE_ENV !== "production";
 
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/prepmate")
-  .then(() => {
-    console.log("Connected to MongoDB");
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Socket.IO server initialized`);
-    });
+const maskMongoUri = (uri) => {
+  try {
+    return uri.replace(/:\/\/([^:@]+):([^@]+)@/, "://***:***@");
+  } catch {
+    return uri;
+  }
+};
+
+const buildNonSrvAtlasUri = (uri) => {
+  try {
+    const parsed = new URL(uri);
+    if (parsed.protocol !== "mongodb+srv:") {
+      return null;
+    }
+
+    const hostParts = parsed.hostname.split(".");
+    if (hostParts.length < 3) {
+      return null;
+    }
+
+    const clusterName = hostParts[0];
+    const domain = hostParts.slice(1).join(".");
+    const seeds = [
+      `${clusterName}-shard-00-00.${domain}:27017`,
+      `${clusterName}-shard-00-01.${domain}:27017`,
+      `${clusterName}-shard-00-02.${domain}:27017`,
+    ].join(",");
+
+    const credentials = parsed.username
+      ? `${parsed.username}${parsed.password ? `:${parsed.password}` : ""}@`
+      : "";
+
+    const dbPath = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "/prepmate";
+    const params = new URLSearchParams(parsed.search);
+    params.delete("appName");
+    if (!params.has("ssl")) params.set("ssl", "true");
+    if (!params.has("authSource")) params.set("authSource", "admin");
+
+    return `mongodb://${credentials}${seeds}${dbPath}?${params.toString()}`;
+  } catch {
+    return null;
+  }
+};
+
+const resolveMongoUris = () => {
+  const derivedFallback = buildNonSrvAtlasUri(MONGODB_URI);
+  const uris = [
+    MONGODB_URI,
+    MONGODB_URI_FALLBACK,
+    derivedFallback,
+    MONGODB_URI_LOCAL,
+  ].filter(Boolean);
+  return [...new Set(uris)];
+};
+
+const connectMongoWithFallback = async () => {
+  const candidates = resolveMongoUris();
+
+  for (const uri of candidates) {
+    try {
+      await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 10000,
+      });
+
+      console.log(`Connected to MongoDB using: ${maskMongoUri(uri)}`);
+      return true;
+    } catch (err) {
+      console.error(`MongoDB connection attempt failed: ${maskMongoUri(uri)}`);
+      console.error(err.message);
+    }
+  }
+
+  return false;
+};
+
+const startHttpServer = () => {
+  server.once("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`Port ${PORT} is already in use. Set PORT to a free port.`);
+    } else {
+      console.error("HTTP server startup error:", err);
+    }
+    process.exit(1);
+  });
+
+  server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log("Socket.IO server initialized");
+  });
+};
+
+connectMongoWithFallback()
+  .then((isConnected) => {
+    if (isConnected) {
+      startHttpServer();
+      return;
+    }
+
+    if (ALLOW_START_WITHOUT_DB) {
+      console.warn(
+        "Starting server without database connection. Set ALLOW_START_WITHOUT_DB=false to enforce DB startup checks."
+      );
+      startHttpServer();
+      return;
+    }
+
+    process.exit(1);
   })
   .catch((err) => {
-    console.error("MongoDB connection error:", err);
+    console.error("Unexpected MongoDB startup error:", err);
     process.exit(1);
   });
 

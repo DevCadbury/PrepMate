@@ -5,7 +5,6 @@ import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 import { Badge } from "../../ui/badge";
-import { ScrollArea } from "../../ui/scroll-area";
 import { Textarea } from "../../ui/textarea";
 import { useToast } from "../../ui/toast";
 import {
@@ -31,7 +30,11 @@ import {
   Moon,
   Search,
   Phone,
+  PhoneOff,
   Video,
+  VideoOff,
+  Mic,
+  MicOff,
   MoreHorizontal,
   VolumeX,
   Volume2,
@@ -136,7 +139,9 @@ const ChatPage: React.FC = () => {
   const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
   const [isTyping, setIsTyping] = useState(false);
   const [isCurrentlyTyping, setIsCurrentlyTyping] = useState(false);
-  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
+  const [typingTimeout, setTypingTimeout] = useState<
+    ReturnType<typeof setTimeout> | null
+  >(
     null
   );
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(
@@ -147,15 +152,75 @@ const ChatPage: React.FC = () => {
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionPosition, setMentionPosition] = useState(0);
   const [mentionedUsers, setMentionedUsers] = useState<Set<string>>(new Set());
+  const [incomingCall, setIncomingCall] = useState<{
+    callerId: string;
+    callerName: string;
+    roomId?: string;
+    callType: "audio" | "video";
+    offer?: any;
+  } | null>(null);
+  const [outgoingCall, setOutgoingCall] = useState<{
+    recipientId: string;
+    recipientName: string;
+    roomId?: string;
+    callType: "audio" | "video";
+    status: "calling";
+  } | null>(null);
+  const [activeCall, setActiveCall] = useState<{
+    participantId: string;
+    participantName: string;
+    roomId?: string;
+    callType: "audio" | "video";
+  } | null>(null);
+  const [callStatus, setCallStatus] = useState<
+    "idle" | "ringing" | "calling" | "connecting" | "connected" | "ended" | "rejected" | "failed"
+  >("idle");
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [callDurationSeconds, setCallDurationSeconds] = useState(0);
+  const [isMicMuted, setIsMicMuted] = useState(false);
+  const [isCameraEnabled, setIsCameraEnabled] = useState(true);
+  const [isSpeakerEnabled, setIsSpeakerEnabled] = useState(true);
+  const [selectedCallLog, setSelectedCallLog] = useState<Message | null>(null);
+
+  const [currentMessagesPage, setCurrentMessagesPage] = useState(1);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const messagesAreaRef = useRef<HTMLDivElement | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showErrorRef = useRef(showError);
+  const successRef = useRef(success);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Update ref when showError changes
   useEffect(() => {
     showErrorRef.current = showError;
   }, [showError]);
+
+  useEffect(() => {
+    successRef.current = success;
+  }, [success]);
+
+  useEffect(() => {
+    if (callStatus !== "connected" || !callStartedAt) {
+      setCallDurationSeconds(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setCallDurationSeconds(
+        Math.max(0, Math.floor((Date.now() - callStartedAt) / 1000))
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [callStatus, callStartedAt]);
 
   // Request notification permission on component mount
   useEffect(() => {
@@ -236,13 +301,72 @@ const ChatPage: React.FC = () => {
       setIsConnected(false);
     });
 
+    newSocket.on("message-sent", (data: any) => {
+      const ackMessage = data?.message;
+      const clientTempId = data?.clientTempId;
+
+      if (!ackMessage) {
+        return;
+      }
+
+      setMessages((prev) => {
+        if (clientTempId) {
+          const tempIndex = prev.findIndex((msg) => msg._id === clientTempId);
+          if (tempIndex !== -1) {
+            const next = [...prev];
+            next[tempIndex] = ackMessage;
+            return next;
+          }
+        }
+
+        const alreadyPresent = prev.some((msg) => msg._id === ackMessage._id);
+        if (alreadyPresent) {
+          return prev;
+        }
+
+        return [...prev, ackMessage];
+      });
+      scrollToBottom();
+    });
+
     newSocket.on("new-message", (data: any) => {
       console.log("Received new message:", data);
-      setMessages((prev) => [...prev, data.message]);
+      setMessages((prev) => {
+        const incomingMessage = data.message;
+        if (!incomingMessage) {
+          return prev;
+        }
+
+        const alreadyPresent = prev.some((msg) => msg._id === incomingMessage._id);
+        if (alreadyPresent) {
+          return prev;
+        }
+
+        const incomingSenderId =
+          typeof incomingMessage?.senderId === "string"
+            ? incomingMessage.senderId
+            : incomingMessage?.senderId?._id;
+
+        const tempMessageIndex = prev.findIndex(
+          (msg) =>
+            msg._id.startsWith("temp-") &&
+            msg.message === incomingMessage?.message &&
+            msg.senderId?._id === incomingSenderId
+        );
+
+        if (tempMessageIndex !== -1) {
+          const updated = [...prev];
+          updated[tempMessageIndex] = incomingMessage;
+          return updated;
+        }
+
+        return [...prev, incomingMessage];
+      });
       scrollToBottom();
 
       // Show notification if not in current room
-      if (data.message.roomId !== currentRoom?._id) {
+      const incomingRoomId = data.message.roomId || data.message.chatRoomId;
+      if (incomingRoomId !== currentRoom?._id) {
         const senderName = data.message.senderId.name;
         const messagePreview =
           data.message.message.length > 50
@@ -252,7 +376,7 @@ const ChatPage: React.FC = () => {
         showNotification(
           `New message from ${senderName}`,
           messagePreview,
-          data.message.roomId
+          incomingRoomId
         );
       }
     });
@@ -383,8 +507,89 @@ const ChatPage: React.FC = () => {
           `${data.mentionedBy} mentioned you in a message`,
           data.roomId
         );
-        success("Mentioned!", "You were mentioned in a message");
+        successRef.current("Mentioned!", "You were mentioned in a message");
       }
+    });
+
+    newSocket.on("call_offer", (data: any) => {
+      const callType = data?.offer?.type === "video" ? "video" : "audio";
+      setCallStatus("ringing");
+      setIncomingCall({
+        callerId: data.callerId,
+        callerName: data?.caller?.name || "Unknown",
+        roomId: data.roomId,
+        callType,
+        offer: data.offer,
+      });
+    });
+
+    newSocket.on("call_answer", (data: any) => {
+      if (data?.answer?.accepted === false) {
+        setOutgoingCall(null);
+        setCallStatus("rejected");
+        showErrorRef.current("Call rejected", "The user rejected your call.");
+        return;
+      }
+
+      const resolvedCallType =
+        data?.answer?.type === "video" ? "video" : "audio";
+
+      if (data?.answer?.sdp && peerConnectionRef.current) {
+        peerConnectionRef.current
+          .setRemoteDescription(new RTCSessionDescription(data.answer.sdp))
+          .catch((err) => {
+            console.error("Error setting remote answer description:", err);
+          });
+      }
+
+      setActiveCall({
+        participantId: data.answererId,
+        participantName: data?.answerer?.name || "Unknown",
+        roomId: undefined,
+        callType: resolvedCallType,
+      });
+      setCallStatus("connected");
+      setCallStartedAt(Date.now());
+      setOutgoingCall(null);
+      setIsMicMuted(false);
+      setIsCameraEnabled(resolvedCallType === "video");
+      setIsSpeakerEnabled(true);
+      successRef.current(
+        `${resolvedCallType === "video" ? "Video" : "Voice"} call connected`,
+        `Connected with ${data?.answerer?.name || "user"}`
+      );
+    });
+
+    newSocket.on("call_ice_candidate", async (data: any) => {
+      try {
+        if (peerConnectionRef.current && data?.candidate) {
+          await peerConnectionRef.current.addIceCandidate(
+            new RTCIceCandidate(data.candidate)
+          );
+        }
+      } catch (err) {
+        console.error("Error adding ICE candidate:", err);
+      }
+    });
+
+    newSocket.on("call_end", (data: any) => {
+      cleanupCallResources();
+      setIncomingCall(null);
+      setOutgoingCall(null);
+      setActiveCall(null);
+      setIsMicMuted(false);
+      setIsCameraEnabled(true);
+      setCallStartedAt(null);
+      setCallStatus(data?.reason === "rejected" ? "rejected" : "ended");
+      if (data?.reason === "rejected") {
+        showErrorRef.current("Call rejected", "The user rejected your call.");
+      }
+    });
+
+    newSocket.on("call_error", (data: any) => {
+      setOutgoingCall(null);
+      setCallStatus("failed");
+      showErrorRef.current("Call failed", data?.message || "Unable to start call.");
     });
 
     newSocket.on("error", (error: any) => {
@@ -405,6 +610,78 @@ const ChatPage: React.FC = () => {
       newSocket.disconnect();
     };
   }, []);
+
+  const cleanupCallResources = () => {
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.onicecandidate = null;
+      peerConnectionRef.current.ontrack = null;
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => track.stop());
+      remoteStreamRef.current = null;
+    }
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+  };
+
+  const getMediaStream = async (callType: "audio" | "video") => {
+    return navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: callType === "video",
+    });
+  };
+
+  const createPeerConnection = (recipientId: string) => {
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && socket) {
+        socket.emit("call_ice_candidate", {
+          recipientId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      const [stream] = event.streams;
+      remoteStreamRef.current = stream;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = stream;
+        remoteVideoRef.current.muted = !isSpeakerEnabled;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = stream;
+        remoteAudioRef.current.muted = !isSpeakerEnabled;
+      }
+    };
+
+    peerConnectionRef.current = pc;
+    return pc;
+  };
 
   // Fetch chat rooms and users
   useEffect(() => {
@@ -427,7 +704,10 @@ const ChatPage: React.FC = () => {
 
       if (room) {
         setChatLoading(true);
-        fetchMessages(roomId);
+        setCurrentMessagesPage(1);
+        setHasMoreMessages(true);
+        setLoadingMoreMessages(false);
+        fetchMessages(roomId, { page: 1 });
         markMessagesAsSeen(roomId);
       }
     } else if (roomId && chatRooms.length === 0) {
@@ -460,6 +740,7 @@ const ChatPage: React.FC = () => {
             roomId: currentRoom._id,
             message: message.message,
             type: "text",
+            clientTempId: message._id,
           });
         }
       } catch (error) {
@@ -728,7 +1009,17 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  const isTempMessageId = (messageId: string) => messageId.startsWith("temp-");
+
   const handleReaction = async (messageId: string, emoji: string) => {
+    if (isTempMessageId(messageId)) {
+      showErrorRef.current(
+        "Message not synced yet",
+        "Please wait a moment and try reacting again."
+      );
+      return;
+    }
+
     try {
       const response = await fetch(
         `http://localhost:5000/api/chat/messages/${messageId}/reactions`,
@@ -786,6 +1077,14 @@ const ChatPage: React.FC = () => {
     messageId: string,
     deleteForEveryone: boolean = false
   ) => {
+    if (isTempMessageId(messageId)) {
+      showErrorRef.current(
+        "Message not synced yet",
+        "Please wait a moment and try deleting again."
+      );
+      return;
+    }
+
     try {
       const response = await fetch(
         `http://localhost:5000/api/chat/messages/${messageId}`,
@@ -824,6 +1123,14 @@ const ChatPage: React.FC = () => {
   };
 
   const handleReportMessage = async (messageId: string, reason: string) => {
+    if (isTempMessageId(messageId)) {
+      showErrorRef.current(
+        "Message not synced yet",
+        "Please wait a moment and try reporting again."
+      );
+      return;
+    }
+
     try {
       const response = await fetch(
         `http://localhost:5000/api/chat/messages/${messageId}/report`,
@@ -923,20 +1230,53 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const fetchMessages = async (roomId: string) => {
-    console.log("Fetching messages for room:", roomId);
+  const fetchMessages = async (
+    roomId: string,
+    options?: {
+      appendOlder?: boolean;
+      beforeId?: string;
+      page?: number;
+    }
+  ) => {
+    const appendOlder = Boolean(options?.appendOlder);
+    const limit = 30;
+
+    const params = new URLSearchParams();
+    params.set("limit", String(limit));
+    params.set("page", String(options?.page || 1));
+    if (options?.beforeId) {
+      params.set("beforeId", options.beforeId);
+    }
+
+    console.log("Fetching messages for room:", roomId, params.toString());
+
     try {
       const response = await fetch(
-        `http://localhost:5000/api/chat/room/${roomId}/messages`,
+        `http://localhost:5000/api/chat/room/${roomId}/messages?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
       );
+
       if (response.ok) {
         const data = await response.json();
-        console.log("Messages fetched:", data.data.messages);
-        setMessages(data.data.messages);
-        scrollToBottom();
+        const fetchedMessages = data?.data?.messages || [];
+        const hasNext = Boolean(data?.data?.pagination?.hasNextPage);
+
+        if (appendOlder) {
+          setMessages((prev) => {
+            const previousIds = new Set(prev.map((msg) => msg._id));
+            const uniqueOlder = fetchedMessages.filter(
+              (msg: Message) => !previousIds.has(msg._id)
+            );
+            return [...uniqueOlder, ...prev];
+          });
+        } else {
+          setMessages(fetchedMessages);
+          scrollToBottom();
+        }
+
+        setHasMoreMessages(hasNext);
       } else {
         console.error("Failed to fetch messages:", response.status);
       }
@@ -945,8 +1285,60 @@ const ChatPage: React.FC = () => {
       showErrorRef.current("Failed to fetch messages", "Please try again.");
     } finally {
       setChatLoading(false);
+      setLoadingMoreMessages(false);
     }
   };
+
+  const loadOlderMessages = async () => {
+    if (!currentRoom || loadingMoreMessages || chatLoading || !hasMoreMessages) {
+      return;
+    }
+
+    const oldestMessageId = messages[0]?._id;
+    if (!oldestMessageId || oldestMessageId.startsWith("temp-")) {
+      return;
+    }
+
+    const viewport = messagesAreaRef.current;
+    const previousScrollHeight = viewport?.scrollHeight || 0;
+    const previousScrollTop = viewport?.scrollTop || 0;
+
+    setLoadingMoreMessages(true);
+    const nextPage = currentMessagesPage + 1;
+    setCurrentMessagesPage(nextPage);
+
+    await fetchMessages(currentRoom._id, {
+      appendOlder: true,
+      beforeId: oldestMessageId,
+      page: nextPage,
+    });
+
+    // Keep viewport anchored after prepending older messages.
+    setTimeout(() => {
+      if (viewport) {
+        const nextScrollHeight = viewport.scrollHeight;
+        viewport.scrollTop = nextScrollHeight - previousScrollHeight + previousScrollTop;
+      }
+    }, 0);
+  };
+
+  useEffect(() => {
+    const root = messagesAreaRef.current;
+    if (!root) {
+      return;
+    }
+
+    const handleScroll = () => {
+      if (root.scrollTop <= 80) {
+        loadOlderMessages();
+      }
+    };
+
+    root.addEventListener("scroll", handleScroll);
+    return () => {
+      root.removeEventListener("scroll", handleScroll);
+    };
+  }, [currentRoom?._id, hasMoreMessages, loadingMoreMessages, chatLoading, messages]);
 
   const markMessagesAsSeen = async (roomId: string) => {
     try {
@@ -962,27 +1354,22 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const sendMessage = async () => {
-    if (!newMessage.trim() || !currentRoom) return;
-
-    // Validate message length
-    if (newMessage.length > 50000) {
-      showErrorRef.current(
-        "Message too long",
-        "Maximum 50,000 characters allowed. Please shorten your message."
-      );
+  const emitMessage = (
+    messageText: string,
+    options?: {
+      silentWhenOffline?: boolean;
+    }
+  ) => {
+    if (!currentRoom || !messageText.trim()) {
       return;
     }
 
-    const messageText = newMessage.trim();
-    setNewMessage("");
+    const clientTempId = `temp-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
 
-    // Stop typing immediately when sending message
-    stopTyping();
-
-    // Create a temporary message for immediate UI feedback
     const tempMessage: Message = {
-      _id: `temp-${Date.now()}`,
+      _id: clientTempId,
       senderId: {
         _id: user?.id || "",
         name: user?.name || "",
@@ -995,28 +1382,52 @@ const ChatPage: React.FC = () => {
       createdAt: new Date().toISOString(),
     };
 
-    // Add message to UI immediately
     setMessages((prev) => [...prev, tempMessage]);
     scrollToBottom();
 
     if (isConnected && socket) {
-      try {
-        socket.emit("send-message", {
-          roomId: currentRoom._id,
-          message: messageText,
-          type: "text",
-        });
-      } catch (error) {
-        console.error("Failed to send message:", error);
-        showErrorRef.current("Failed to send message", "Please try again.");
-      }
-    } else {
-      // Store message for when connection is restored
-      setPendingMessages((prev) => [...prev, tempMessage]);
+      socket.emit("send-message", {
+        roomId: currentRoom._id,
+        message: messageText,
+        type: "text",
+        clientTempId,
+      });
+      return;
+    }
+
+    setPendingMessages((prev) => [...prev, tempMessage]);
+    if (!options?.silentWhenOffline) {
       showErrorRef.current(
         "Message saved",
         "Will be sent when connection is restored."
       );
+    }
+  };
+
+  const sendCallLogMessage = (messageText: string) => {
+    emitMessage(messageText, { silentWhenOffline: true });
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !currentRoom) return;
+
+    if (newMessage.length > 50000) {
+      showErrorRef.current(
+        "Message too long",
+        "Maximum 50,000 characters allowed. Please shorten your message."
+      );
+      return;
+    }
+
+    const messageText = newMessage.trim();
+    setNewMessage("");
+    stopTyping();
+
+    try {
+      emitMessage(messageText);
+    } catch (error) {
+      console.error("Failed to send message:", error);
+      showErrorRef.current("Failed to send message", "Please try again.");
     }
   };
 
@@ -1095,6 +1506,28 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  const isCallLogMessage = (message: Message) => {
+    if (!message?.message) return false;
+    return /^(📞|📴|✅|❌)\s/.test(message.message);
+  };
+
+  const parseCallLog = (message: Message) => {
+    const text = message?.message || "";
+    const durationMatch = text.match(/\((\d{2}:\d{2})\)/);
+    const duration = durationMatch ? durationMatch[1] : null;
+
+    if (text.startsWith("📞")) {
+      return { title: "Call Started", accent: "text-blue-700", duration };
+    }
+    if (text.startsWith("✅")) {
+      return { title: "Call Connected", accent: "text-emerald-700", duration };
+    }
+    if (text.startsWith("❌")) {
+      return { title: "Call Rejected", accent: "text-rose-700", duration };
+    }
+    return { title: "Call Ended", accent: "text-slate-700", duration };
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "sent":
@@ -1155,6 +1588,237 @@ const ChatPage: React.FC = () => {
         }
       | undefined;
   };
+
+  const formatCallDuration = (startedAt: number | null) => {
+    if (!startedAt) return "00:00";
+    const totalSeconds = Math.floor((Date.now() - startedAt) / 1000);
+    const minutes = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  };
+
+  const formatDurationFromSeconds = (totalSeconds: number) => {
+    const minutes = Math.floor(totalSeconds / 60)
+      .toString()
+      .padStart(2, "0");
+    const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  };
+
+  const toggleMic = () => {
+    const nextMuted = !isMicMuted;
+    setIsMicMuted(nextMuted);
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !nextMuted;
+      });
+    }
+  };
+
+  const toggleCamera = () => {
+    const nextEnabled = !isCameraEnabled;
+    setIsCameraEnabled(nextEnabled);
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((track) => {
+        track.enabled = nextEnabled;
+      });
+    }
+  };
+
+  const toggleSpeaker = () => {
+    const nextEnabled = !isSpeakerEnabled;
+    setIsSpeakerEnabled(nextEnabled);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = !nextEnabled;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = !nextEnabled;
+    }
+  };
+
+  const startCall = async (callType: "audio" | "video") => {
+    if (!socket || !currentRoom || currentRoom.type === "group") {
+      showErrorRef.current(
+        "Call unavailable",
+        "Calling is currently supported for one-to-one chats only."
+      );
+      return;
+    }
+
+    const participant = currentRoom.participants.find((p) => p._id !== user?.id);
+    if (!participant?._id) {
+      showErrorRef.current("Call unavailable", "No recipient found for this chat.");
+      return;
+    }
+
+    try {
+      cleanupCallResources();
+      setCallStatus("calling");
+      setCallStartedAt(null);
+      setIsMicMuted(false);
+      setIsCameraEnabled(callType === "video");
+      setIsSpeakerEnabled(true);
+
+      const localStream = await getMediaStream(callType);
+      localStreamRef.current = localStream;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+      }
+
+      const pc = createPeerConnection(participant._id);
+      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      socket.emit("call_offer", {
+        recipientId: participant._id,
+        offer: {
+          type: callType,
+          sdp: offer,
+          timestamp: Date.now(),
+        },
+        roomId: currentRoom._id,
+      });
+      sendCallLogMessage(
+        `📞 Started ${callType === "video" ? "video" : "voice"} call with ${participant.name}`
+      );
+    } catch (err) {
+      console.error("Error starting call:", err);
+      cleanupCallResources();
+      setCallStatus("failed");
+      showErrorRef.current(
+        "Call unavailable",
+        "Could not access microphone/camera. Please check permissions."
+      );
+      return;
+    }
+
+    setOutgoingCall({
+      recipientId: participant._id,
+      recipientName: participant.name,
+      roomId: currentRoom._id,
+      callType,
+      status: "calling",
+    });
+  };
+
+  const acceptIncomingCall = async () => {
+    if (!socket || !incomingCall) return;
+
+    try {
+      cleanupCallResources();
+      setCallStatus("connecting");
+      setIsMicMuted(false);
+      setIsCameraEnabled(incomingCall.callType === "video");
+      setIsSpeakerEnabled(true);
+
+      const localStream = await getMediaStream(incomingCall.callType);
+      localStreamRef.current = localStream;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+      }
+
+      const pc = createPeerConnection(incomingCall.callerId);
+      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+      if (incomingCall.offer?.sdp) {
+        await pc.setRemoteDescription(
+          new RTCSessionDescription(incomingCall.offer.sdp)
+        );
+      }
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit("call_answer", {
+        callerId: incomingCall.callerId,
+        answer: {
+          accepted: true,
+          type: incomingCall.callType,
+          sdp: answer,
+          timestamp: Date.now(),
+        },
+      });
+    } catch (err) {
+      console.error("Error accepting call:", err);
+      cleanupCallResources();
+      showErrorRef.current(
+        "Unable to accept call",
+        "Please check microphone/camera permissions and try again."
+      );
+      return;
+    }
+
+    setActiveCall({
+      participantId: incomingCall.callerId,
+      participantName: incomingCall.callerName,
+      roomId: incomingCall.roomId,
+      callType: incomingCall.callType,
+    });
+    setCallStatus("connected");
+    setCallStartedAt(Date.now());
+    sendCallLogMessage(
+      `✅ Accepted ${incomingCall.callType === "video" ? "video" : "voice"} call from ${incomingCall.callerName}`
+    );
+    setIncomingCall(null);
+  };
+
+  const rejectIncomingCall = () => {
+    if (!socket || !incomingCall) return;
+
+    socket.emit("call_answer", {
+      callerId: incomingCall.callerId,
+      answer: {
+        accepted: false,
+        type: incomingCall.callType,
+        timestamp: Date.now(),
+      },
+    });
+
+    sendCallLogMessage(
+      `❌ Rejected ${incomingCall.callType === "video" ? "video" : "voice"} call from ${incomingCall.callerName}`
+    );
+
+    setIncomingCall(null);
+    setCallStatus("rejected");
+  };
+
+  const endCurrentCall = () => {
+    if (!socket) return;
+
+    const duration = formatCallDuration(callStartedAt);
+
+    const recipientId =
+      activeCall?.participantId ||
+      outgoingCall?.recipientId ||
+      incomingCall?.callerId;
+
+    if (recipientId) {
+      socket.emit("call_end", {
+        recipientId,
+        reason: "ended",
+      });
+    }
+
+    cleanupCallResources();
+    setIncomingCall(null);
+    setOutgoingCall(null);
+    setActiveCall(null);
+    setIsMicMuted(false);
+    setIsCameraEnabled(true);
+    setCallStartedAt(null);
+    setCallStatus("ended");
+    sendCallLogMessage(`📴 Ended call (${duration})`);
+  };
+
+  useEffect(() => {
+    return () => {
+      cleanupCallResources();
+    };
+  }, []);
 
   // Filter and sort chat rooms - online users first, then by last message time
   const filteredChatRooms = chatRooms
@@ -1653,10 +2317,20 @@ const ChatPage: React.FC = () => {
                     Enable Notifications
                   </Button>
                 )}
-                <Button size="sm" variant="ghost">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => startCall("audio")}
+                  disabled={!!activeCall || !!outgoingCall}
+                >
                   <Phone className="w-4 h-4" />
                 </Button>
-                <Button size="sm" variant="ghost">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => startCall("video")}
+                  disabled={!!activeCall || !!outgoingCall}
+                >
                   <Video className="w-4 h-4" />
                 </Button>
                 <Button size="sm" variant="ghost">
@@ -1665,8 +2339,51 @@ const ChatPage: React.FC = () => {
               </div>
             </div>
 
+            {(outgoingCall || activeCall) && (
+              <div className="px-4 py-2 border-b border-gray-100 bg-purple-50 flex items-center justify-between">
+                <div className="text-sm text-purple-800 font-medium space-y-1">
+                  <div>
+                    {activeCall
+                      ? `${activeCall.callType === "video" ? "Video" : "Voice"} call with ${activeCall.participantName}`
+                      : `${outgoingCall?.callType === "video" ? "Video" : "Voice"} calling ${outgoingCall?.recipientName}...`}
+                  </div>
+                  <div className="text-xs text-purple-700">
+                    Status: {callStatus}
+                    {callStatus === "connected"
+                      ? ` • ${formatDurationFromSeconds(callDurationSeconds)}`
+                      : ""}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={toggleMic}>
+                    {isMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </Button>
+                  {(activeCall?.callType === "video" || outgoingCall?.callType === "video") && (
+                    <Button size="sm" variant="outline" onClick={toggleCamera}>
+                      {isCameraEnabled ? (
+                        <Video className="w-4 h-4" />
+                      ) : (
+                        <VideoOff className="w-4 h-4" />
+                      )}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={toggleSpeaker}>
+                    {isSpeakerEnabled ? (
+                      <Volume2 className="w-4 h-4" />
+                    ) : (
+                      <VolumeX className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={endCurrentCall}>
+                    <PhoneOff className="w-4 h-4 mr-1" />
+                    End
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Messages Area */}
-            <ScrollArea className="flex-1 p-4">
+            <div ref={messagesAreaRef} className="flex-1 p-4 overflow-y-auto">
               {chatLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
@@ -1676,8 +2393,21 @@ const ChatPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {loadingMoreMessages && (
+                    <div className="flex items-center justify-center py-2">
+                      <span className="text-xs text-gray-500">Loading older messages...</span>
+                    </div>
+                  )}
+
+                  {!hasMoreMessages && messages.length > 0 && (
+                    <div className="flex items-center justify-center py-2">
+                      <span className="text-xs text-gray-400">Start of conversation</span>
+                    </div>
+                  )}
+
                   {messages.map((message, index) => {
                     const isOwnMessage = message.senderId._id === user?.id;
+                    const isCallLog = isCallLogMessage(message);
                     const showDate =
                       index === 0 ||
                       formatDate(message.createdAt) !==
@@ -1694,171 +2424,189 @@ const ChatPage: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        <div
-                          className={`flex items-end space-x-2 ${
-                            isOwnMessage ? "justify-end" : "justify-start"
-                          }`}
-                        >
-                          {!isOwnMessage && (
-                            <Avatar className="w-8 h-8 flex-shrink-0">
-                              <AvatarImage
-                                src={message.senderId.profilePicture}
-                              />
-                              <AvatarFallback className="text-xs">
-                                {message.senderId.name.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-
-                          <div className="relative group">
+                        {isCallLog ? (
+                          <div className="flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCallLog(message)}
+                              className="group px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-200 hover:bg-blue-100 transition-all duration-200"
+                              title="Click to view call details"
+                            >
+                              <span>{message.message} • {formatTime(message.createdAt)}</span>
+                              <span className="ml-2 opacity-0 group-hover:opacity-100 text-blue-800 font-medium">
+                                View
+                              </span>
+                            </button>
+                          </div>
+                        ) : (
+                          <>
                             <div
-                              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                                isOwnMessage
-                                  ? "bg-purple-500 text-white"
-                                  : "bg-gray-100 text-gray-900"
+                              className={`flex items-end space-x-2 ${
+                                isOwnMessage ? "justify-end" : "justify-start"
                               }`}
                             >
-                              {message.isDeleted ? (
-                                <p className="text-sm italic text-gray-500">
-                                  This message was deleted
-                                </p>
-                              ) : (
-                                <p className="text-sm">{message.message}</p>
+                              {!isOwnMessage && (
+                                <Avatar className="w-8 h-8 flex-shrink-0">
+                                  <AvatarImage
+                                    src={message.senderId.profilePicture}
+                                  />
+                                  <AvatarFallback className="text-xs">
+                                    {message.senderId.name.charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
                               )}
 
-                              <div
-                                className={`flex items-center justify-between mt-1 text-xs ${
-                                  isOwnMessage
-                                    ? "text-purple-100"
-                                    : "text-gray-500"
-                                }`}
-                              >
-                                <span>{formatTime(message.createdAt)}</span>
-                                <div className="flex items-center space-x-1">
-                                  {message.isEdited && (
-                                    <span className="italic">edited</span>
+                              <div className="relative group">
+                                <div
+                                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                                    isOwnMessage
+                                      ? "bg-purple-500 text-white"
+                                      : "bg-gray-100 text-gray-900"
+                                  }`}
+                                >
+                                  {message.isDeleted ? (
+                                    <p className="text-sm italic text-gray-500">
+                                      This message was deleted
+                                    </p>
+                                  ) : (
+                                    <p className="text-sm">{message.message}</p>
                                   )}
-                                  {message.senderId._id === user?.id &&
-                                    getStatusIcon(message.status)}
+
+                                  <div
+                                    className={`flex items-center justify-between mt-1 text-xs ${
+                                      isOwnMessage
+                                        ? "text-purple-100"
+                                        : "text-gray-500"
+                                    }`}
+                                  >
+                                    <span>{formatTime(message.createdAt)}</span>
+                                    <div className="flex items-center space-x-1">
+                                      {message.isEdited && (
+                                        <span className="italic">edited</span>
+                                      )}
+                                      {message.senderId._id === user?.id &&
+                                        getStatusIcon(message.status)}
+                                    </div>
+                                  </div>
                                 </div>
+
+                                {/* Message Actions */}
+                                {!message.isDeleted && (
+                                  <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0"
+                                        >
+                                          <MoreHorizontal className="w-3 h-3" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            setShowReactionPicker(message._id)
+                                          }
+                                        >
+                                          <span className="mr-2">😊</span>
+                                          React
+                                        </DropdownMenuItem>
+                                        {message.senderId._id === user?.id && (
+                                          <>
+                                            <DropdownMenuItem
+                                              onClick={() =>
+                                                handleDeleteMessage(
+                                                  message._id,
+                                                  false
+                                                )
+                                              }
+                                            >
+                                              <Trash2 className="w-4 h-4 mr-2" />
+                                              Delete for me
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() =>
+                                                handleDeleteMessage(
+                                                  message._id,
+                                                  true
+                                                )
+                                              }
+                                            >
+                                              <Trash2 className="w-4 h-4 mr-2" />
+                                              Delete for everyone
+                                            </DropdownMenuItem>
+                                          </>
+                                        )}
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            handleReportMessage(
+                                              message._id,
+                                              "inappropriate"
+                                            )
+                                          }
+                                        >
+                                          <Shield className="w-4 h-4 mr-2" />
+                                          Report
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                )}
+
+                                {/* Reaction Picker */}
+                                {showReactionPicker === message._id && (
+                                  <ReactionPicker
+                                    onReaction={(emoji) =>
+                                      handleReaction(message._id, emoji)
+                                    }
+                                    isVisible={true}
+                                    onClose={() => setShowReactionPicker(null)}
+                                  />
+                                )}
                               </div>
+
+                              {isOwnMessage && (
+                                <Avatar className="w-8 h-8 flex-shrink-0">
+                                  <AvatarImage src={user?.profilePicture} />
+                                  <AvatarFallback className="text-xs">
+                                    {user?.name?.charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
+                              )}
                             </div>
 
-                            {/* Message Actions */}
-                            {!message.isDeleted && (
-                              <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 w-6 p-0"
-                                    >
-                                      <MoreHorizontal className="w-3 h-3" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        setShowReactionPicker(message._id)
-                                      }
-                                    >
-                                      <span className="mr-2">😊</span>
-                                      React
-                                    </DropdownMenuItem>
-                                    {message.senderId._id === user?.id && (
-                                      <>
-                                        <DropdownMenuItem
-                                          onClick={() =>
-                                            handleDeleteMessage(
-                                              message._id,
-                                              false
-                                            )
-                                          }
-                                        >
-                                          <Trash2 className="w-4 h-4 mr-2" />
-                                          Delete for me
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          onClick={() =>
-                                            handleDeleteMessage(
-                                              message._id,
-                                              true
-                                            )
-                                          }
-                                        >
-                                          <Trash2 className="w-4 h-4 mr-2" />
-                                          Delete for everyone
-                                        </DropdownMenuItem>
-                                      </>
+                            {/* Reactions */}
+                            {message.reactions && message.reactions.length > 0 && (
+                              <div
+                                className={`flex flex-wrap gap-1 mt-1 ${
+                                  isOwnMessage ? "justify-end" : "justify-start"
+                                }`}
+                              >
+                                {Object.entries(
+                                  message.reactions.reduce((acc, reaction) => {
+                                    acc[reaction.emoji] =
+                                      (acc[reaction.emoji] || 0) + 1;
+                                    return acc;
+                                  }, {} as Record<string, number>)
+                                ).map(([emoji, count]) => (
+                                  <ReactionIcon
+                                    key={emoji}
+                                    emoji={emoji}
+                                    count={count}
+                                    isActive={message.reactions?.some(
+                                      (r) =>
+                                        r.userId === user?.id && r.emoji === emoji
                                     )}
-                                    <DropdownMenuItem
-                                      onClick={() =>
-                                        handleReportMessage(
-                                          message._id,
-                                          "inappropriate"
-                                        )
-                                      }
-                                    >
-                                      <Shield className="w-4 h-4 mr-2" />
-                                      Report
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                    onClick={() =>
+                                      handleReaction(message._id, emoji)
+                                    }
+                                    className="cursor-pointer"
+                                  />
+                                ))}
                               </div>
                             )}
-
-                            {/* Reaction Picker */}
-                            {showReactionPicker === message._id && (
-                              <ReactionPicker
-                                onReaction={(emoji) =>
-                                  handleReaction(message._id, emoji)
-                                }
-                                isVisible={true}
-                                onClose={() => setShowReactionPicker(null)}
-                              />
-                            )}
-                          </div>
-
-                          {isOwnMessage && (
-                            <Avatar className="w-8 h-8 flex-shrink-0">
-                              <AvatarImage src={user?.profilePicture} />
-                              <AvatarFallback className="text-xs">
-                                {user?.name?.charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
-                        </div>
-
-                        {/* Reactions */}
-                        {message.reactions && message.reactions.length > 0 && (
-                          <div
-                            className={`flex flex-wrap gap-1 mt-1 ${
-                              isOwnMessage ? "justify-end" : "justify-start"
-                            }`}
-                          >
-                            {Object.entries(
-                              message.reactions.reduce((acc, reaction) => {
-                                acc[reaction.emoji] =
-                                  (acc[reaction.emoji] || 0) + 1;
-                                return acc;
-                              }, {} as Record<string, number>)
-                            ).map(([emoji, count]) => (
-                              <ReactionIcon
-                                key={emoji}
-                                emoji={emoji}
-                                count={count}
-                                isActive={message.reactions?.some(
-                                  (r) =>
-                                    r.userId === user?.id && r.emoji === emoji
-                                )}
-                                onClick={() =>
-                                  handleReaction(message._id, emoji)
-                                }
-                                className="cursor-pointer"
-                              />
-                            ))}
-                          </div>
+                          </>
                         )}
                       </div>
                     );
@@ -1870,7 +2618,7 @@ const ChatPage: React.FC = () => {
                   <div ref={messagesEndRef} />
                 </div>
               )}
-            </ScrollArea>
+            </div>
 
             {/* Message Input */}
             <div className="bg-white/90 backdrop-blur-sm border-t border-gray-200 p-4">
@@ -2025,6 +2773,142 @@ const ChatPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {incomingCall && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Incoming call</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              {incomingCall.callerName} is calling you ({incomingCall.callType})
+            </p>
+            <p className="text-xs text-amber-600 mt-1 font-medium">Status: ringing</p>
+            <div className="mt-4 flex gap-2 justify-end">
+              <Button variant="outline" onClick={rejectIncomingCall}>
+                Reject
+              </Button>
+              <Button onClick={acceptIncomingCall}>Accept</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(activeCall || outgoingCall) && (
+        <div className="fixed bottom-4 right-4 z-50 w-[360px] md:w-[430px] rounded-2xl bg-gray-900/95 backdrop-blur p-4 shadow-2xl text-white border border-gray-700/80">
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-base font-semibold">
+                  {activeCall
+                    ? `${activeCall.callType === "video" ? "Video" : "Voice"} call with ${activeCall.participantName}`
+                    : `${outgoingCall?.callType === "video" ? "Video" : "Voice"} calling ${outgoingCall?.recipientName}...`}
+                </h3>
+                <p className="text-xs text-gray-300">
+                  {callStatus}
+                  {callStatus === "connected"
+                    ? ` • ${formatDurationFromSeconds(callDurationSeconds)}`
+                    : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="outline" onClick={toggleMic}>
+                  {isMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
+                {(activeCall?.callType === "video" || outgoingCall?.callType === "video") && (
+                  <Button size="sm" variant="outline" onClick={toggleCamera}>
+                    {isCameraEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" onClick={toggleSpeaker}>
+                  {isSpeakerEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </Button>
+                <Button size="sm" variant="destructive" onClick={endCurrentCall}>
+                  <PhoneOff className="w-4 h-4 mr-1" />
+                  End Call
+                </Button>
+              </div>
+            </div>
+
+            {(activeCall?.callType === "video" || outgoingCall?.callType === "video") && (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-black/40 aspect-video overflow-hidden border border-gray-700">
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="rounded-lg bg-black/40 aspect-video overflow-hidden border border-gray-700">
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(activeCall?.callType === "audio" || outgoingCall?.callType === "audio") && (
+              <div className="rounded-lg bg-black/40 border border-gray-700 p-4 text-center">
+                <Phone className="w-8 h-8 mx-auto mb-2 text-green-400" />
+                <p className="text-xs text-gray-300">Audio call in progress</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <audio ref={remoteAudioRef} autoPlay className="hidden" />
+
+      <Dialog
+        open={Boolean(selectedCallLog)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedCallLog(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedCallLog ? parseCallLog(selectedCallLog).title : "Call details"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedCallLog
+                ? `Recorded at ${formatTime(selectedCallLog.createdAt)} on ${formatDate(
+                    selectedCallLog.createdAt
+                  )}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedCallLog && (
+            <div className="space-y-3">
+              <div
+                className={`text-sm font-medium ${
+                  parseCallLog(selectedCallLog).accent
+                }`}
+              >
+                {selectedCallLog.message}
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3 text-sm text-gray-700">
+                <p>
+                  <span className="font-semibold">Thread Note:</span> This call log remains in your chat history.
+                </p>
+                {parseCallLog(selectedCallLog).duration && (
+                  <p className="mt-1">
+                    <span className="font-semibold">Duration:</span>{" "}
+                    {parseCallLog(selectedCallLog).duration}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Settings Dialog */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>

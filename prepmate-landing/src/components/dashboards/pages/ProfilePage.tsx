@@ -275,10 +275,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   const [loadingFollowing, setLoadingFollowing] = useState(false);
 
   // Add rate limiting states
-  const [isFetchingPosts, setIsFetchingPosts] = useState(false);
-  const [isCheckingFollow, setIsCheckingFollow] = useState(false);
-  const [lastFetchTime, setLastFetchTime] = useState(0);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isCheckingFollowRef = useRef(false);
+  const isFetchingPostsRef = useRef(false);
+  const fetchingPostsTargetRef = useRef<string | null>(null);
+  const lastFollowCheckRef = useRef<{ userId: string; ts: number } | null>(
+    null
+  );
+  const currentTargetUsernameRef = useRef<string | null>(null);
+  const activeProfileTargetRef = useRef<string | null>(null);
+  const profileFetchRequestRef = useRef(0);
+  const postsFetchRequestRef = useRef(0);
+  const lastPostsFetchByTargetRef = useRef<Record<string, number>>({});
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ref for profile menu to handle click outside
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -332,7 +340,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     };
   }, []);
 
-  const fetchUserPosts = useCallback(async () => {
+  useEffect(() => {
+    currentTargetUsernameRef.current = targetUsername || null;
+  }, [targetUsername]);
+
+  useEffect(() => {
+    activeProfileTargetRef.current = viewingOtherUser
+      ? otherUser?._id || otherUser?.id || null
+      : user?.id || null;
+  }, [viewingOtherUser, otherUser, user?.id]);
+
+  const fetchUserPosts = useCallback(async (force = false) => {
     if (!user?.id) return;
 
     // If viewing other user, we need to get their ID from the otherUser data
@@ -340,27 +358,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       ? otherUser?._id || otherUser?.id
       : user.id;
 
-    console.log("fetchUserPosts - viewingOtherUser:", viewingOtherUser);
-    console.log("fetchUserPosts - otherUser:", otherUser);
-    console.log("fetchUserPosts - targetUserId:", targetUserId);
-    console.log("fetchUserPosts - user.id:", user.id);
-
     if (!targetUserId) {
-      console.log("fetchUserPosts - No targetUserId found, returning");
       return;
     }
 
-    if (isFetchingPosts) {
+    if (
+      isFetchingPostsRef.current &&
+      fetchingPostsTargetRef.current === targetUserId
+    ) {
       return;
     }
 
     const now = Date.now();
-    if (now - lastFetchTime < 3000) {
+    const lastFetchedAt = lastPostsFetchByTargetRef.current[targetUserId] || 0;
+    if (!force && now - lastFetchedAt < 1200) {
       return;
     }
 
-    setIsFetchingPosts(true);
-    setLastFetchTime(now);
+    const requestId = ++postsFetchRequestRef.current;
+    lastPostsFetchByTargetRef.current[targetUserId] = now;
+    isFetchingPostsRef.current = true;
+    fetchingPostsTargetRef.current = targetUserId;
     setLoadingPosts(true);
 
     try {
@@ -375,6 +393,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
       if (response.ok) {
         const data = await response.json();
+        // Ignore stale responses after route/profile switches.
+        if (
+          postsFetchRequestRef.current !== requestId ||
+          activeProfileTargetRef.current !== targetUserId
+        ) {
+          return;
+        }
+
         // Ensure we have an array of posts
         const posts = data.data?.posts || data.posts || [];
         if (Array.isArray(posts)) {
@@ -382,53 +408,77 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
         } else {
           setUserPosts([]);
         }
-      } else if (response.status === 429) {
-        setTimeout(() => {
-          setLastFetchTime(0);
-        }, 5000);
       } else {
         console.error("Failed to fetch user posts");
-        setUserPosts([]);
+        if (
+          postsFetchRequestRef.current === requestId &&
+          activeProfileTargetRef.current === targetUserId
+        ) {
+          setUserPosts([]);
+        }
       }
     } catch (error) {
       console.error("Error fetching user posts:", error);
     } finally {
-      setLoadingPosts(false);
-      setIsFetchingPosts(false);
-    }
-  }, [user?.id, otherUser, viewingOtherUser, isFetchingPosts, lastFetchTime]);
+      if (postsFetchRequestRef.current === requestId) {
+        setLoadingPosts(false);
+      }
 
-  const debouncedFetchUserPosts = useCallback(() => {
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
+      if (fetchingPostsTargetRef.current === targetUserId) {
+        isFetchingPostsRef.current = false;
+        fetchingPostsTargetRef.current = null;
+      }
     }
-    debounceTimeoutRef.current = setTimeout(() => {
-      fetchUserPosts();
-    }, 1000);
-  }, [fetchUserPosts]);
+  }, [user?.id, otherUser?._id, otherUser?.id, viewingOtherUser]);
 
-  const checkFollowStatus = useCallback(async () => {
+  const debouncedFetchUserPosts = useCallback(
+    (force = false) => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      debounceTimeoutRef.current = setTimeout(() => {
+        fetchUserPosts(force);
+      }, 500);
+    },
+    [fetchUserPosts]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const checkFollowStatus = useCallback(async (force = false) => {
     if (!user?.id || !viewingOtherUser || !otherUser) {
-      console.log("checkFollowStatus - Early return:", {
-        userId: user?.id,
-        viewingOtherUser,
-        otherUser: !!otherUser,
-      });
       return;
     }
 
-    if (isCheckingFollow) {
+    const targetUserId = otherUser._id || otherUser.id;
+    if (!targetUserId) {
       return;
     }
 
-    setIsCheckingFollow(true);
-    console.log(
-      "checkFollowStatus - Starting follow status check for user:",
-      otherUser._id || otherUser.id
-    );
+    if (isCheckingFollowRef.current) {
+      return;
+    }
+
+    const lastCheck = lastFollowCheckRef.current;
+    if (
+      !force &&
+      lastCheck &&
+      lastCheck.userId === targetUserId &&
+      Date.now() - lastCheck.ts < 1500
+    ) {
+      return;
+    }
+
+    isCheckingFollowRef.current = true;
+    lastFollowCheckRef.current = { userId: targetUserId, ts: Date.now() };
 
     try {
-      const targetUserId = otherUser._id || otherUser.id;
       const response = await fetch(
         `http://localhost:5000/api/social/users/${targetUserId}/follow-status`,
         {
@@ -441,54 +491,66 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       if (response.ok) {
         const data = await response.json();
         const followData = data.data;
-
-        console.log("checkFollowStatus - Follow status received:", {
-          isFollowing: followData.isFollowing,
-          hasRequestSent: followData.hasRequestSent,
-          canFollow: followData.canFollow,
-          relationshipStatus: followData.relationshipStatus,
-        });
+        const privacy = followData.privacy || otherUser?.preferences?.privacy;
+        const profileVisibility = privacy?.profileVisibility;
 
         setIsFollowing(followData.isFollowing || false);
         setFollowRequestSent(followData.hasRequestSent || false);
-        setCanFollow(followData.canFollow || false);
+        setCanFollow(Boolean(followData.canFollow));
+
+        // Keep privacy access in sync with relationship updates (e.g., request accepted elsewhere).
+        if (followData.isFollowing) {
+          setCanViewProfile(true);
+          setCanViewPosts(true);
+          setCanViewFollowers(privacy?.showFollowers !== false);
+          setCanViewFollowing(privacy?.showFollowing !== false);
+          setCanMessage(privacy?.allowMessages !== "none");
+          setCanComment(privacy?.allowComments !== "none");
+
+          // Refresh profile/posts immediately once access is granted.
+          fetchProfileData(targetUserId);
+          debouncedFetchUserPosts(true);
+        } else if (profileVisibility === "private") {
+          setCanViewProfile(false);
+          setCanViewPosts(false);
+          setCanViewFollowers(false);
+          setCanViewFollowing(false);
+          setCanMessage(false);
+          setCanComment(false);
+        }
+
         setFollowStatusLoaded(true);
-        console.log(
-          "checkFollowStatus - Follow status loaded, followStatusLoaded set to true"
-        );
-      } else if (response.status === 429) {
-        console.log("checkFollowStatus - Rate limited");
-      } else {
-        console.log("checkFollowStatus - Response not ok:", response.status);
-        const errorData = await response.json();
-        console.log("checkFollowStatus - Error data:", errorData);
+      } else if (response.status !== 429) {
+        const errorData = await response.json().catch(() => ({}));
+        console.warn("checkFollowStatus failed:", response.status, errorData);
       }
     } catch (error) {
       console.error("Error checking follow status:", error);
     } finally {
-      setIsCheckingFollow(false);
+      isCheckingFollowRef.current = false;
+      // Avoid getting stuck on skeleton if follow-status request fails.
+      setFollowStatusLoaded(true);
     }
-  }, [user?.id, otherUser, viewingOtherUser, isCheckingFollow]);
+  }, [user?.id, otherUser, viewingOtherUser]);
 
-  const fetchProfileData = async () => {
+  const fetchProfileData = async (explicitTargetUserId?: string) => {
+    let requestId = 0;
+    let requestedTargetUserId = "";
+
     try {
       // Determine which user ID to use for fetching data
       const targetUserId =
-        viewingOtherUser && otherUser
+        explicitTargetUserId ||
+        (viewingOtherUser && otherUser
           ? otherUser._id || otherUser.id
-          : user?.id;
+          : user?.id);
 
       if (!targetUserId) {
-        console.log("fetchProfileData - No target user ID available");
         return;
       }
 
-      console.log(
-        "fetchProfileData - Fetching data for user ID:",
-        targetUserId,
-        "viewingOtherUser:",
-        viewingOtherUser
-      );
+      requestId = ++profileFetchRequestRef.current;
+      requestedTargetUserId = targetUserId;
 
       // Set loading states
       setLoadingFollowers(true);
@@ -511,6 +573,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
           },
         }),
       ]);
+
+      if (
+        profileFetchRequestRef.current !== requestId ||
+        activeProfileTargetRef.current !== targetUserId
+      ) {
+        return;
+      }
 
       if (followersRes.ok) {
         const followersData = await followersRes.json();
@@ -542,8 +611,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       setLoading(false);
     } catch (error) {
       console.error("ProfilePage: Error fetching profile data:", error);
-      setLoading(false);
+      if (
+        profileFetchRequestRef.current === requestId &&
+        activeProfileTargetRef.current === requestedTargetUserId
+      ) {
+        setLoading(false);
+      }
     } finally {
+      if (
+        profileFetchRequestRef.current !== requestId ||
+        activeProfileTargetRef.current !== requestedTargetUserId
+      ) {
+        return;
+      }
+
       // Clear loading states
       setLoadingFollowers(false);
       setLoadingFollowing(false);
@@ -552,9 +633,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
   useEffect(() => {
     if (user) {
-      fetchProfileData();
-      debouncedFetchUserPosts();
-      checkFollowStatus();
+      const viewingDifferentProfile =
+        targetUsername && targetUsername !== user?.username;
+
+      if (!viewingDifferentProfile) {
+        fetchProfileData();
+        debouncedFetchUserPosts(true);
+      }
+
       setEditProfile({
         name: user?.name || "",
         location: user?.profile?.location || "",
@@ -566,23 +652,33 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
         portfolio: user?.profile?.socialLinks?.portfolio || "",
       });
     }
-  }, [user]);
+  }, [user, targetUsername, debouncedFetchUserPosts]);
 
   // Fetch profile data when otherUser changes (for viewing other profiles)
   useEffect(() => {
     if (viewingOtherUser && otherUser) {
-      console.log("otherUser useEffect - Fetching profile data for other user");
       fetchProfileData();
     }
   }, [otherUser, viewingOtherUser]);
 
+  // Re-check follow status only after the target user is fully available.
   useEffect(() => {
-    console.log("Profile useEffect - targetUsername:", targetUsername);
-    console.log("Profile useEffect - user?.username:", user?.username);
-    console.log("Profile useEffect - viewingOtherUser:", viewingOtherUser);
+    if (viewingOtherUser && otherUser) {
+      setFollowStatusLoaded(false);
+      checkFollowStatus(true);
+    }
+  }, [viewingOtherUser, otherUser, checkFollowStatus]);
 
+  useEffect(() => {
     if (targetUsername && targetUsername !== user?.username) {
-      console.log("Profile useEffect - Setting viewingOtherUser to true");
+      setShowFollowersDialog(false);
+      setShowFollowingDialog(false);
+      setFollowersSearchQuery("");
+      setFollowingSearchQuery("");
+      setFollowers([]);
+      setFollowing([]);
+      setPosts([]);
+      setUserPosts([]);
       setViewingOtherUser(true);
       // Reset follow status when switching to a new user
       setFollowStatusLoaded(false);
@@ -591,21 +687,37 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       setCanFollow(true);
       fetchOtherUserData();
     } else {
-      console.log("Profile useEffect - Setting viewingOtherUser to false");
+      setShowFollowersDialog(false);
+      setShowFollowingDialog(false);
+      setFollowersSearchQuery("");
+      setFollowingSearchQuery("");
+      setFollowers([]);
+      setFollowing([]);
+      setPosts([]);
+      setUserPosts([]);
       setViewingOtherUser(false);
       setOtherUser(null);
       setFollowStatusLoaded(false);
-      debouncedFetchUserPosts();
+      setIsFollowing(false);
+      setFollowRequestSent(false);
+      setCanViewProfile(true);
+      setCanViewPosts(true);
+      setCanViewFollowers(true);
+      setCanViewFollowing(true);
+      setCanFollow(false);
+      setCanMessage(false);
+      setCanComment(false);
+      if (user?.id) {
+        fetchProfileData(user.id);
+      }
+      debouncedFetchUserPosts(true);
     }
   }, [targetUsername, user?.username]);
 
   // Fetch posts when otherUser is loaded
   useEffect(() => {
     if (viewingOtherUser && otherUser) {
-      console.log("otherUser useEffect - otherUser loaded, fetching posts");
-      console.log("otherUser useEffect - otherUser:", otherUser);
-      console.log("otherUser useEffect - viewingOtherUser:", viewingOtherUser);
-      debouncedFetchUserPosts();
+      debouncedFetchUserPosts(true);
     }
   }, [otherUser, viewingOtherUser, debouncedFetchUserPosts]);
 
@@ -639,7 +751,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   const fetchOtherUserData = async () => {
     if (!targetUsername) return;
 
-    console.log("fetchOtherUserData - targetUsername:", targetUsername);
+    const requestedUsername = targetUsername;
 
     try {
       const response = await fetch(
@@ -653,15 +765,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log("fetchOtherUserData - fetched user data:", data.data.user);
+
+        if (currentTargetUsernameRef.current !== requestedUsername) {
+          return;
+        }
+
         setOtherUser(data.data.user);
         checkPrivacyAndFollowStatus(data.data.user);
-        // Check follow status immediately after user data is loaded
-        if (viewingOtherUser && data.data.user) {
-          checkFollowStatus();
-        }
-        // Fetch profile data (followers, following, posts) for the other user
-        setTimeout(() => fetchProfileData(), 100); // Small delay to ensure state is set
       } else {
         console.error("Failed to fetch other user data");
       }
@@ -694,14 +804,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       const isPublic = privacy?.profileVisibility === "public";
       const isFriendsOnly = privacy?.profileVisibility === "friends";
       const isPrivate = privacy?.profileVisibility === "private";
-
-      console.log("checkPrivacyAndFollowStatus - privacy settings:", {
-        privacy,
-        isOwnProfile,
-        isPublic,
-        isFriendsOnly,
-        isPrivate,
-      });
 
       if (isOwnProfile) {
         setCanViewProfile(true);
@@ -743,21 +845,28 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   };
 
   const handleFollow = async () => {
-    setFollowLoading(true);
-    setFollowStatusLoaded(false); // Reset loaded state during action
-    try {
-      const targetUserId = viewingOtherUser
-        ? otherUser?._id || otherUser?.id
-        : user?.id;
+    if (!user?.id) {
+      return;
+    }
 
+    const targetUserId = viewingOtherUser
+      ? otherUser?._id || otherUser?.id
+      : user?.id;
+
+    if (!targetUserId || targetUserId === user.id) {
+      setIsFollowing(false);
+      setFollowRequestSent(false);
+      setCanFollow(false);
+      setFollowStatusLoaded(true);
+      warning("Action not allowed", "You cannot follow your own profile.");
+      return;
+    }
+
+    setFollowLoading(true);
+    try {
       // Determine the action and HTTP method
       const isUnfollowing = isFollowing || followRequestSent;
       const method = isUnfollowing ? "DELETE" : "POST";
-
-      console.log(
-        isUnfollowing ? "Unfollowing user:" : "Following user:",
-        targetUserId
-      );
 
       const res = await fetch(
         `http://localhost:5000/api/social/users/${targetUserId}/follow`,
@@ -771,7 +880,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       );
 
       const data = await res.json();
-      console.log("Follow/Unfollow response:", data);
 
       if (res.ok) {
         if (isUnfollowing) {
@@ -779,8 +887,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
           setIsFollowing(false);
           setFollowRequestSent(false);
           setCanFollow(true);
-          console.log("Successfully unfollowed user");
-
           // Show success toast for unfollow
           success(
             "Unfollowed successfully",
@@ -789,7 +895,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
           // Refresh follow status and posts after unfollow
           if (viewingOtherUser && otherUser) {
-            checkFollowStatus();
+            checkFollowStatus(true);
             debouncedFetchUserPosts();
           }
 
@@ -823,7 +929,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
             // Refresh follow status after follow request
             if (viewingOtherUser && otherUser) {
-              checkFollowStatus();
+              checkFollowStatus(true);
             }
           } else if (data.data?.isFollowing || data.success) {
             // Direct follow for public account
@@ -839,7 +945,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
             // Refresh follow status and posts after follow
             if (viewingOtherUser && otherUser) {
-              checkFollowStatus();
+              checkFollowStatus(true);
               debouncedFetchUserPosts();
             }
 
@@ -857,6 +963,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
             }
           }
         }
+
+        // Refresh counts and relationship data after any successful follow action.
+        await fetchProfileData();
       } else {
         // Handle error responses
         if (data.message === "You are already following this user") {
@@ -879,11 +988,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
           error("Follow Action Failed", data.message || "Something went wrong");
         }
       }
-    } catch (error: any) {
-      console.error("Error in follow/unfollow action:", error);
+    } catch (err: any) {
+      console.error("Error in follow/unfollow action:", err);
       error("Follow Action Failed", "Please try again");
     } finally {
       setFollowLoading(false);
+      setFollowStatusLoaded(true);
     }
   };
 
@@ -990,8 +1100,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     }
   };
 
+  const isViewingSelfProfile = Boolean(
+    user?.id &&
+      viewingOtherUser &&
+      (otherUser?._id || otherUser?.id) === user.id
+  );
   const displayUser = viewingOtherUser ? otherUser : user;
-  const isOwnProfile = !viewingOtherUser;
+  const isOwnProfile = !viewingOtherUser || isViewingSelfProfile;
 
   const handleMessageUser = async () => {
     if (!user?.id) return;
@@ -1048,8 +1163,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       } else {
         throw new Error("Failed to fetch chat rooms");
       }
-    } catch (error: any) {
-      console.error("Error navigating to chat:", error);
+    } catch (err: any) {
+      console.error("Error navigating to chat:", err);
       error("Failed to open chat", "Please try again.");
     }
   };
@@ -1057,8 +1172,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   const handleSaveProfile = async () => {
     setSavingProfile(true);
     try {
-      console.log("Starting profile update...", editProfile);
-
       const socialLinks: {
         linkedin?: string;
         github?: string;
@@ -1085,8 +1198,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
         },
       };
 
-      console.log("Sending profile update request:", requestBody);
-
       const response = await fetch("http://localhost:5000/api/profile", {
         method: "PUT",
         headers: {
@@ -1096,11 +1207,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
         body: JSON.stringify(requestBody),
       });
 
-      console.log("Profile update response status:", response.status);
-
       if (response.ok) {
         const data = await response.json();
-        console.log("Profile update successful:", data);
 
         await updateProfile(data.data.user);
         setShowEditProfile(false);
@@ -1121,15 +1229,15 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
         error("Profile Update Failed", errorMessage);
       }
-    } catch (error: any) {
-      console.error("Error updating profile:", error);
+    } catch (err: any) {
+      console.error("Error updating profile:", err);
 
       let errorMessage = "Please try again";
-      if (error.message) {
-        errorMessage = error.message;
+      if (err.message) {
+        errorMessage = err.message;
       } else if (
-        error.name === "TypeError" &&
-        error.message.includes("fetch")
+        err.name === "TypeError" &&
+        err.message.includes("fetch")
       ) {
         errorMessage =
           "Network error. Please check your connection and try again.";
@@ -1193,8 +1301,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
       setShowImagePreview(false);
       setPreviewImage(null);
-    } catch (error: any) {
-      console.error("Error uploading image:", error);
+    } catch (err: any) {
+      console.error("Error uploading image:", err);
       error("Upload failed", "Failed to upload image. Please try again.");
     } finally {
       setUploadingImage(false);
@@ -1229,8 +1337,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
           errorData.message || "Please try again."
         );
       }
-    } catch (error: any) {
-      console.error("Error creating post:", error);
+    } catch (err: any) {
+      console.error("Error creating post:", err);
       error("Failed to create post", "Please try again.");
     }
   };
@@ -1291,8 +1399,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       } else {
         error("Failed to remove follower", "Please try again later.");
       }
-    } catch (error: any) {
-      console.error("Error removing follower:", error);
+    } catch (err: any) {
+      console.error("Error removing follower:", err);
       error("Error removing follower", "Please try again.");
     } finally {
       setRemovingFollower(null);
@@ -1324,8 +1432,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       } else {
         error("Failed to unfollow user", "Please try again later.");
       }
-    } catch (error: any) {
-      console.error("Error unfollowing user:", error);
+    } catch (err: any) {
+      console.error("Error unfollowing user:", err);
       error("Error unfollowing user", "Please try again.");
     } finally {
       setUnfollowingUser(null);
@@ -1360,8 +1468,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
           data.message || "Please try again later."
         );
       }
-    } catch (error: any) {
-      console.error("Error blocking user:", error);
+    } catch (err: any) {
+      console.error("Error blocking user:", err);
       error("Error blocking user", "Please try again.");
     } finally {
       setBlockingUser(null);
@@ -1389,36 +1497,18 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
   // Function to refresh followers data when dialog opens
   const handleFollowersDialogOpen = () => {
-    console.log(
-      "handleFollowersDialogOpen - viewingOtherUser:",
-      viewingOtherUser,
-      "otherUser:",
-      otherUser
-    );
     setShowFollowersDialog(true);
     // Refresh followers data to ensure it's up-to-date
     if (viewingOtherUser && otherUser) {
-      console.log(
-        "handleFollowersDialogOpen - Refreshing followers data for other user"
-      );
       fetchProfileData();
     }
   };
 
   // Function to refresh following data when dialog opens
   const handleFollowingDialogOpen = () => {
-    console.log(
-      "handleFollowingDialogOpen - viewingOtherUser:",
-      viewingOtherUser,
-      "otherUser:",
-      otherUser
-    );
     setShowFollowingDialog(true);
     // Refresh following data to ensure it's up-to-date
     if (viewingOtherUser && otherUser) {
-      console.log(
-        "handleFollowingDialogOpen - Refreshing following data for other user"
-      );
       fetchProfileData();
     }
   };
@@ -1471,34 +1561,27 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     targetUserId: string,
     isCurrentlyFollowing: boolean
   ) => {
+    if (user?.id && targetUserId === user.id) {
+      warning("Action not allowed", "You cannot follow your own profile.");
+      return;
+    }
+
     try {
       const method = isCurrentlyFollowing ? "DELETE" : "POST";
-      const response = await fetch(`/api/social/users/${targetUserId}/follow`, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/social/users/${targetUserId}/follow`,
+        {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
 
       if (response.ok) {
-        const data = await response.json();
-        console.log("Follow/Unfollow response:", data);
-
-        // Update local state immediately
-        if (isCurrentlyFollowing) {
-          // Unfollowed - remove from following list
-          setFollowing((prev) => prev.filter((f) => f._id !== targetUserId));
-
-          // Also remove from followers if they were following us
-          setFollowers((prev) => prev.filter((f) => f._id !== targetUserId));
-        } else {
-          // Followed - add to following list
-          // We'll need to fetch the user data to add to the list
-          // For now, just update the local following state
-          // If this was a "follow back" action, we might need to update followers list too
-          // This will be handled when we implement proper state management
-        }
+        await response.json().catch(() => ({}));
+        await fetchProfileData();
 
         success(
           isCurrentlyFollowing
@@ -1509,11 +1592,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
             : "You are now following this user"
         );
       } else {
-        const errorData = await response.json();
+        const errorData = await response
+          .json()
+          .catch(() => ({ message: "Unexpected server response" }));
         error("Action failed", errorData.message || "Please try again");
       }
-    } catch (error: any) {
-      console.error("Error in follow/unfollow:", error);
+    } catch (err: any) {
+      console.error("Error in follow/unfollow:", err);
       error("Action failed", "Please try again");
     }
   };
@@ -1537,7 +1622,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
               className="absolute top-6 right-6 flex gap-3 z-10"
               style={{ position: "absolute", zIndex: 1000 }}
             >
-              {!viewingOtherUser ? (
+              {!viewingOtherUser || isViewingSelfProfile ? (
                 <>
                   {/* Settings Button */}
                   <motion.div
@@ -1549,7 +1634,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log("Settings button clicked!");
                         if (window.location.pathname.includes("/dashboard")) {
                           window.dispatchEvent(new CustomEvent("showSettings"));
                         } else {
@@ -1592,10 +1676,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log(
-                          "Edit Profile button clicked! Current state:",
-                          showEditProfile
-                        );
                         setShowEditProfile(true);
                       }}
                       onKeyDown={(e) => {
@@ -1630,10 +1710,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log(
-                          "Profile menu button clicked! Current state:",
-                          showProfileMenu
-                        );
                         setShowProfileMenu(!showProfileMenu);
                       }}
                       onKeyDown={(e) => {
@@ -1798,6 +1874,36 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                                 whileTap={{ scale: 0.98 }}
                                 onClick={() => {
                                   setShowProfileMenu(false);
+                                  navigate("/follow-requests");
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setShowProfileMenu(false);
+                                    navigate("/follow-requests");
+                                  }
+                                }}
+                                className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center gap-3 cursor-pointer transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
+                                role="menuitem"
+                                tabIndex={0}
+                              >
+                                <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/40 transition-colors duration-200">
+                                  <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                </div>
+                                <div>
+                                  <div className="font-medium">Follow Requests</div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    Review pending requests
+                                  </div>
+                                </div>
+                              </motion.button>
+
+                              {/* Achievements Option */}
+                              <motion.button
+                                whileHover={{ x: 4 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => {
+                                  setShowProfileMenu(false);
                                   setShowAchievementsDialog(true);
                                 }}
                                 onKeyDown={(e) => {
@@ -1834,19 +1940,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                                 onClick={async () => {
                                   setShowProfileMenu(false);
                                   try {
-                                    console.log(
-                                      "=== PROFILE PAGE LOGOUT CALLED ==="
-                                    );
                                     await logout();
                                     success(
                                       "Logged out successfully",
                                       "You have been logged out."
                                     );
                                     window.location.href = "/";
-                                  } catch (error: any) {
+                                  } catch (err: any) {
                                     console.error(
                                       "Error during profile logout:",
-                                      error
+                                      err
                                     );
                                     error("Logout failed", "Please try again.");
                                   }
@@ -1884,22 +1987,24 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
               ) : (
                 <>
                   {/* Message Button for Other Users */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                  >
-                    <Button
-                      onClick={handleMessageUser}
-                      variant="outline"
-                      className="group relative overflow-hidden border-gray-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium text-gray-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer shadow-sm hover:shadow-md"
-                      size="sm"
+                  {canMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.1 }}
                     >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/10 group-hover:to-purple-500/10 transition-all duration-300"></div>
-                      <MessageCircle className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300" />
-                      <span className="relative z-10">Message</span>
-                    </Button>
-                  </motion.div>
+                      <Button
+                        onClick={handleMessageUser}
+                        variant="outline"
+                        className="group relative overflow-hidden border-gray-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium text-gray-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer shadow-sm hover:shadow-md"
+                        size="sm"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/10 group-hover:to-purple-500/10 transition-all duration-300"></div>
+                        <MessageCircle className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300" />
+                        <span className="relative z-10">Message</span>
+                      </Button>
+                    </motion.div>
+                  )}
 
                   {/* Follow Button for Other Users */}
                   <motion.div
@@ -1912,7 +2017,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                     ) : (
                       <Button
                         onClick={handleFollow}
-                        disabled={followLoading || !canFollow}
+                        disabled={
+                          followLoading ||
+                          (!canFollow && !isFollowing && !followRequestSent)
+                        }
                         className={`group relative overflow-hidden transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium cursor-pointer shadow-sm hover:shadow-md transform hover:scale-105 active:scale-95 ${
                           isFollowing
                             ? "bg-gray-600 hover:bg-gray-700 text-white"
@@ -2161,10 +2269,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                 <div
                   className="flex flex-col items-center justify-center space-y-2 cursor-pointer hover:scale-105 transition-transform duration-200"
                   onClick={() => {
-                    console.log(
-                      "Opening achievements dialog, current state:",
-                      showAchievementsDialog
-                    );
                     setShowAchievementsDialog(true);
                   }}
                 >
@@ -2745,12 +2849,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                     </div>
                   ) : (
                     <>
-                      {console.log(
-                        "Followers Dialog - Displaying followers for user:",
-                        viewingOtherUser ? otherUser?.username : user?.username,
-                        "Count:",
-                        filteredFollowers.length
-                      )}
                       {filteredFollowers.map((follower) => {
                         if (!follower || typeof follower !== "object") {
                           return null;
@@ -2991,12 +3089,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                     </div>
                   ) : (
                     <>
-                      {console.log(
-                        "Following Dialog - Displaying following for user:",
-                        viewingOtherUser ? otherUser?.username : user?.username,
-                        "Count:",
-                        filteredFollowing.length
-                      )}
                       {filteredFollowing.map((followed) => {
                         if (!followed || typeof followed !== "object") {
                           return null;

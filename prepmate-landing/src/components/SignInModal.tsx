@@ -17,6 +17,11 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
     identifier?: string;
     password?: string;
   }>({});
+  const [showForgotForm, setShowForgotForm] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState("");
+  const [forgotError, setForgotError] = useState("");
 
   const validateForm = () => {
     const newErrors: { identifier?: string; password?: string } = {};
@@ -69,6 +74,47 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
   const handleGoogleSignIn = () => {
     // Redirect to backend Google OAuth endpoint
     window.location.href = "http://localhost:5000/api/auth/google";
+  };
+
+  const handleForgotPassword = async () => {
+    setForgotMessage("");
+    setForgotError("");
+
+    const email = forgotEmail.trim();
+    if (!email) {
+      setForgotError("Please enter your email address");
+      return;
+    }
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!isEmail) {
+      setForgotError("Please enter a valid email address");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const response = await fetch("http://localhost:5000/api/auth/forgot-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setForgotMessage(
+          data.message || "Password reset link sent. Please check your email."
+        );
+      } else {
+        setForgotError(data.message || "Could not send reset email");
+      }
+    } catch (error) {
+      setForgotError("Network error. Please try again.");
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   return (
@@ -172,11 +218,52 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
                 <div className="text-right">
                   <button
                     type="button"
+                    onClick={() => {
+                      setShowForgotForm((prev) => !prev);
+                      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) {
+                        setForgotEmail(identifier);
+                      }
+                      setForgotMessage("");
+                      setForgotError("");
+                    }}
                     className="text-sm text-primary-600 hover:text-primary-700 font-medium"
                   >
                     Forgot password?
                   </button>
                 </div>
+
+                {showForgotForm && (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+                    <label
+                      htmlFor="forgot-email"
+                      className="block text-sm font-medium text-gray-700"
+                    >
+                      Reset email
+                    </label>
+                    <input
+                      id="forgot-email"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="Enter your account email"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                    {forgotError && (
+                      <p className="text-sm text-red-600">{forgotError}</p>
+                    )}
+                    {forgotMessage && (
+                      <p className="text-sm text-green-600">{forgotMessage}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={forgotLoading}
+                      className="w-full bg-gray-900 text-white py-2 px-3 rounded-lg font-medium hover:bg-black transition-colors disabled:opacity-50"
+                    >
+                      {forgotLoading ? "Sending reset link..." : "Send reset link"}
+                    </button>
+                  </div>
+                )}
 
                 {/* Sign In Button */}
                 <button

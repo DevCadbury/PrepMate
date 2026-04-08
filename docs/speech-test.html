@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Recognition & Voice Test - PrepMate</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .test-section {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .test-section h2 {
+            color: #00bcd4;
+            margin-top: 0;
+        }
+        button {
+            background: #00bcd4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0097a7;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.success { background: #1b5e20; }
+        .status.error { background: #b71c1c; }
+        .status.warning { background: #e65100; }
+        .status.info { background: #0d47a1; }
+        
+        #transcript {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            min-height: 100px;
+            border: 2px solid #555;
+        }
+        #cameraView {
+            width: 320px;
+            height: 240px;
+            background: #333;
+            border: 2px solid #555;
+            border-radius: 8px;
+        }
+        .log {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎙️ PrepMate Speech & Voice Test</h1>
+    
+    <div class="test-section">
+        <h2>📹 Camera Test</h2>
+        <button onclick="testCamera()">Test Camera Access</button>
+        <button onclick="stopCamera()">Stop Camera</button>
+        <div id="cameraStatus" class="status info">Click "Test Camera Access" to begin</div>
+        <video id="cameraView" autoplay muted playsinline></video>
+    </div>
+
+    <div class="test-section">
+        <h2>🎤 Speech Recognition Test</h2>
+        <button onclick="startListening()">Start Listening</button>
+        <button onclick="stopListening()">Stop Listening</button>
+        <div id="speechStatus" class="status info">Click "Start Listening" to begin</div>
+        <div id="transcript">Transcript will appear here...</div>
+        <div id="speechLog" class="log">Speech recognition logs will appear here...</div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔊 Voice Synthesis Test</h2>
+        <button onclick="testEnglishVoices()">Test English Voices</button>
+        <button onclick="testIndianVoices()">Test Indian Voices</button>
+        <button onclick="stopSpeaking()">Stop Speaking</button>
+        <div id="voiceStatus" class="status info">Click buttons to test voices</div>
+        <div id="voiceList"></div>
+    </div>
+
+    <script>
+        let recognition = null;
+        let isListening = false;
+        let currentStream = null;
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('speechLog');
+            const logEntry = document.createElement('div');
+            logEntry.style.color = type === 'error' ? '#ff5252' : 
+                                  type === 'success' ? '#4caf50' : 
+                                  type === 'warning' ? '#ff9800' : '#81d4fa';
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        async function testCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 320, height: 240 }, 
+                    audio: false 
+                });
+                currentStream = stream;
+                document.getElementById('cameraView').srcObject = stream;
+                document.getElementById('cameraStatus').textContent = '✅ Camera access granted';
+                document.getElementById('cameraStatus').className = 'status success';
+                log('Camera access successful', 'success');
+            } catch (error) {
+                document.getElementById('cameraStatus').textContent = `❌ Camera error: ${error.message}`;
+                document.getElementById('cameraStatus').className = 'status error';
+                log(`Camera error: ${error.message}`, 'error');
+            }
+        }
+
+        function stopCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+                document.getElementById('cameraView').srcObject = null;
+                document.getElementById('cameraStatus').textContent = 'Camera stopped';
+                document.getElementById('cameraStatus').className = 'status info';
+                log('Camera stopped', 'info');
+            }
+        }
+
+        function startListening() {
+            if (!SpeechRecognition) {
+                document.getElementById('speechStatus').textContent = '❌ Speech recognition not supported';
+                document.getElementById('speechStatus').className = 'status error';
+                return;
+            }
+
+            if (isListening) {
+                log('Already listening', 'warning');
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('speechStatus').textContent = '🎤 Listening...';
+                document.getElementById('speechStatus').className = 'status success';
+                log('Speech recognition started', 'success');
+            };
+
+            recognition.onresult = (event) => {
+                let interim = '';
+                let final = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        final += transcript;
+                        log(`Final transcript: "${transcript}"`, 'success');
+                    } else {
+                        interim += transcript;
+                        log(`Interim transcript: "${transcript}"`, 'info');
+                    }
+                }
+                
+                document.getElementById('transcript').innerHTML = 
+                    `<strong>Final:</strong> ${final}<br><strong>Interim:</strong> ${interim}`;
+            };
+
+            recognition.onerror = (event) => {
+                log(`Speech recognition error: ${event.error}`, 'error');
+                document.getElementById('speechStatus').textContent = `❌ Error: ${event.error}`;
+                document.getElementById('speechStatus').className = 'status error';
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                document.getElementById('speechStatus').textContent = '⏹️ Recognition ended';
+                document.getElementById('speechStatus').className = 'status warning';
+                log('Speech recognition ended', 'warning');
+            };
+
+            try {
+                recognition.start();
+            } catch (error) {
+                log(`Failed to start recognition: ${error.message}`, 'error');
+            }
+        }
+
+        function stopListening() {
+            if (recognition && isListening) {
+                recognition.stop();
+                log('Stopping speech recognition', 'info');
+            }
+        }
+
+        function testEnglishVoices() {
+            const voices = speechSynthesis.getVoices();
+            const englishVoices = voices.filter(v => v.lang.startsWith('en'));
+            
+            document.getElementById('voiceStatus').textContent = `Found ${englishVoices.length} English voices`;
+            document.getElementById('voiceStatus').className = 'status info';
+            
+            const voiceList = document.getElementById('voiceList');
+            voiceList.innerHTML = '<h3>English Voices:</h3>';
+            
+            englishVoices.forEach((voice, index) => {
+                const div = document.createElement('div');
+                div.innerHTML = `
+                    <button onclick="speakWithVoice('${voice.voiceURI}', 'Hello, I am ${voice.name}. I am ready to conduct your interview.')">
+                        ${voice.name} (${voice.lang})
+                    </button>
+                `;
+                voiceList.appendChild(div);
+            });
+
+            log(`Found ${englishVoices.length} English voices`, 'success');
+        }
+
+        function testIndianVoices() {
+            const voices = speechSynthesis.getVoices();
+            const indianVoices = voices.filter(v => 
+                v.lang === 'en-IN' || 
+                v.name.toLowerCase().includes('india') ||
+                (v.name.toLowerCase().includes('heera') && v.name.toLowerCase().includes('english')) ||
+                (v.name.toLowerCase().includes('ravi') && v.name.toLowerCase().includes('english'))
+            );
+            
+            document.getElementById('voiceStatus').textContent = `Found ${indianVoices.length} Indian English voices`;
+            document.getElementById('voiceStatus').className = indianVoices.length > 0 ? 'status success' : 'status warning';
+            
+            const voiceList = document.getElementById('voiceList');
+            voiceList.innerHTML = '<h3>Indian English Voices:</h3>';
+            
+            if (indianVoices.length === 0) {
+                voiceList.innerHTML += '<p style="color: #ff9800;">⚠️ No Indian English voices found. Install Indian language packs for better experience.</p>';
+                voiceList.innerHTML += '<p><a href="ms-settings:regionlanguage-languageoptions" style="color: #00bcd4;">Install Language Packs (Windows)</a></p>';
+            } else {
+                indianVoices.forEach((voice, index) => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <button onclick="speakWithVoice('${voice.voiceURI}', 'Hello, I am ${voice.name.split(' ')[0]}. I will be conducting your interview today in Indian English.')">
+                            ${voice.name} (${voice.lang})
+                        </button>
+                    `;
+                    voiceList.appendChild(div);
+                });
+            }
+
+            log(`Found ${indianVoices.length} Indian English voices`, indianVoices.length > 0 ? 'success' : 'warning');
+        }
+
+        function speakWithVoice(voiceURI, text) {
+            speechSynthesis.cancel(); // Stop any current speech
+            
+            const voices = speechSynthesis.getVoices();
+            const voice = voices.find(v => v.voiceURI === voiceURI);
+            
+            if (!voice) {
+                log(`Voice not found: ${voiceURI}`, 'error');
+                return;
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = voice;
+            utterance.rate = 0.9;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            utterance.onstart = () => {
+                log(`Speaking with: ${voice.name}`, 'info');
+            };
+
+            utterance.onend = () => {
+                log(`Finished speaking with: ${voice.name}`, 'success');
+            };
+
+            utterance.onerror = (event) => {
+                log(`Speech synthesis error: ${event.error}`, 'error');
+            };
+
+            speechSynthesis.speak(utterance);
+        }
+
+        function stopSpeaking() {
+            speechSynthesis.cancel();
+            log('Speech synthesis stopped', 'info');
+        }
+
+        // Load voices when available
+        function loadVoices() {
+            const voices = speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                log(`Loaded ${voices.length} voices`, 'success');
+                testEnglishVoices(); // Show English voices by default
+            } else {
+                setTimeout(loadVoices, 100);
+            }
+        }
+
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = loadVoices;
+        }
+        loadVoices();
+
+        // Test microphone permission on load
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(() => {
+                log('Microphone permission granted', 'success');
+                document.getElementById('speechStatus').textContent = '✅ Microphone ready';
+                document.getElementById('speechStatus').className = 'status success';
+            })
+            .catch((error) => {
+                log(`Microphone permission error: ${error.message}`, 'error');
+                document.getElementById('speechStatus').textContent = `❌ Microphone error: ${error.message}`;
+                document.getElementById('speechStatus').className = 'status error';
+            });
+    </script>
+</body>
+</html>
