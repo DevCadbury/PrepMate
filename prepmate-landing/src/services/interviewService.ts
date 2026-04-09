@@ -1,10 +1,9 @@
 import { GoogleGenAI, Chat, Type } from "@google/genai";
 import type { Message } from "../types/interview";
+import { apiClient } from "../lib/apiClient";
 
 let ai: GoogleGenAI | null = null;
 let currentApiKey: string | null = null;
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const getAuthHeaders = () => ({
   'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -26,7 +25,7 @@ const getAI = (apiKey: string) => {
 // Backend API calls for when API key is stored on server  
 const callBackendAI = async (endpoint: string, data: any) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/ai/${endpoint}`, {
+    const response = await apiClient.fetch(`/ai/${endpoint}`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(data),

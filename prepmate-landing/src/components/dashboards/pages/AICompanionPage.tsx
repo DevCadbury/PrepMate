@@ -33,6 +33,7 @@ import {
   Monitor,
   User,
 } from "lucide-react";
+import { apiClient } from "../../../lib/apiClient";
 
 const SpeechRecognition =
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -1103,7 +1104,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
         let actualApiKey = apiKey;
         if (!actualApiKey) {
           try {
-            const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/users/ai-companion/settings`, {
+            const response = await apiClient.fetch(`/users/ai-companion/settings`, {
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 'Content-Type': 'application/json',
@@ -1316,46 +1317,38 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+    <div className="h-screen w-full flex flex-col p-4 bg-background text-foreground">
       <header className="flex-shrink-0 flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold text-cyan-400">PrepMate</h1>
+        <h1 className="text-3xl font-bold text-ai-600 dark:text-ai-400">PrepMate</h1>
         <div className="relative">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="p-2 rounded-full hover:bg-gray-700 transition-colors duration-200"
+            className="p-2 rounded-full hover:bg-muted transition-colors duration-200 text-foreground"
           >
             <Settings className="w-6 h-6" />
           </button>
           {showSettings && (
-            <div className="absolute right-0 mt-2 w-72 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 p-3">
+            <div className="absolute right-0 mt-2 w-72 bg-card border border-border rounded-lg shadow-xl z-50 p-3">
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-gray-400 block mb-2">
+                  <label className="text-sm text-muted-foreground block mb-2">
                     Avatar Type
                   </label>
                   <div className="flex gap-2">
                     <Button
-                      variant="ghost"
+                      variant={useWebGLAvatar ? "ai" : "outline"}
                       size="sm"
                       onClick={() => setUseWebGLAvatar(true)}
-                      className={`flex-1 ${
-                        useWebGLAvatar
-                          ? "bg-cyan-600 hover:bg-cyan-700 text-white"
-                          : "bg-gray-700 hover:bg-gray-600"
-                      }`}
+                      className="flex-1"
                     >
                       <Monitor className="w-4 h-4 mr-2" />
                       3D Avatar
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant={!useWebGLAvatar ? "ai" : "outline"}
                       size="sm"
                       onClick={() => setUseWebGLAvatar(false)}
-                      className={`flex-1 ${
-                        !useWebGLAvatar
-                          ? "bg-cyan-600 hover:bg-cyan-700 text-white"
-                          : "bg-gray-700 hover:bg-gray-600"
-                      }`}
+                      className="flex-1"
                     >
                       <User className="w-4 h-4 mr-2" />
                       Simple
@@ -1365,7 +1358,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                 <div>
                   <label
                     htmlFor="voice-select"
-                    className="text-sm text-gray-400 block mb-2"
+                    className="text-sm text-muted-foreground block mb-2"
                   >
                     Select AI Voice
                   </label>
@@ -1375,7 +1368,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                         id="voice-select"
                         value={selectedVoiceURI || ""}
                         onChange={(e) => setSelectedVoiceURI(e.target.value)}
-                        className="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        className="w-full bg-background border border-border rounded-md py-1 px-2 text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ai-500"
                       >
                         {availableVoices.map((voice) => (
                           <option key={voice.voiceURI} value={voice.voiceURI}>
@@ -1383,28 +1376,28 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                           </option>
                         ))}
                       </select>
-                      <p className="text-xs text-gray-500 mt-2">
+                      <p className="text-xs text-muted-foreground mt-2">
                         Note: Voices are from your browser/OS. Install language
                         packs for more options.
                       </p>
                     </>
                   ) : (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       No voices available.
                     </p>
                   )}
                 </div>
                 
                 {/* Voice Pitch Control */}
-                <div className="bg-gray-700 p-3 rounded-lg border border-gray-600 shadow-md">
+                <div className="bg-muted/50 p-3 rounded-lg border border-border shadow-sm">
                   <label
                     htmlFor="voice-pitch"
-                    className="text-sm text-gray-300 font-medium block mb-2 flex items-center justify-between"
+                    className="text-sm text-foreground font-medium block mb-2 flex items-center justify-between"
                   >
                     <span className="flex items-center">
                       🎚️ Voice Pitch
                     </span>
-                    <span className="text-cyan-400 text-xs font-bold bg-cyan-900 px-2 py-1 rounded">{voicePitch.toFixed(1)}x</span>
+                    <span className="text-ai-600 dark:text-ai-400 text-xs font-bold bg-ai-50 dark:bg-ai-900/30 px-2 py-1 rounded">{voicePitch.toFixed(1)}x</span>
                   </label>
                   <input
                     id="voice-pitch"
@@ -1414,9 +1407,9 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                     step="0.1"
                     value={voicePitch}
                     onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
-                    className="w-full h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full h-3 bg-muted rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-ai-500"
                     style={{
-                      background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${((voicePitch - 0.5) / 1.5) * 100}%, #374151 ${((voicePitch - 0.5) / 1.5) * 100}%, #374151 100%)`,
+                      background: `linear-gradient(to right, hsl(var(--ai)) 0%, hsl(var(--ai)) ${((voicePitch - 0.5) / 1.5) * 100}%, hsl(var(--muted)) ${((voicePitch - 0.5) / 1.5) * 100}%, hsl(var(--muted)) 100%)`,
                       WebkitAppearance: 'none',
                       height: '12px',
                       borderRadius: '6px',
@@ -1443,17 +1436,17 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                       box-shadow: 0 2px 4px rgba(0,0,0,0.3);
                     }
                   `}</style>
-                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
                     <span>Lower</span>
                     <span>Normal</span>
                     <span>Higher</span>
                   </div>
                   <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       Adjust the AI voice pitch for better comfort
                     </p>
                     <Button
-                      variant="ghost"
+                      variant="ai"
                       size="sm"
                       onClick={async () => {
                         if (selectedVoiceModel) {
@@ -1472,7 +1465,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                           }
                         }
                       }}
-                      className="text-xs px-2 py-1 bg-cyan-600 hover:bg-cyan-700 text-white"
+                      className="text-xs px-2 py-1"
                     >
                       Test
                     </Button>
@@ -1527,9 +1520,9 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
         }}
         onMouseDown={handleCameraMouseDown}
       >
-        <div className="relative bg-gray-800 rounded-lg p-2 shadow-xl border border-gray-600 hover:border-cyan-500 transition-colors">
+        <div className="relative bg-card rounded-lg p-2 shadow-sm border border-border hover:border-ai-500 transition-colors">
           {/* Draggable header */}
-          <div className="camera-header flex items-center justify-between text-xs text-gray-400 mb-1 cursor-grab active:cursor-grabbing hover:text-cyan-400 transition-colors" title="Drag to move camera">
+          <div className="camera-header flex items-center justify-between text-xs text-muted-foreground mb-1 cursor-grab active:cursor-grabbing hover:text-ai-400 transition-colors" title="Drag to move camera">
             <span className="flex items-center">
               <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -1548,7 +1541,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                   setCameraPosition({ x: window.innerWidth - 220, y: 20 });
                   setCameraSize({ width: 192, height: 144 });
                 }}
-                className="text-gray-400 hover:text-cyan-400"
+                className="text-muted-foreground hover:text-ai-400"
                 title="Reset position and size"
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -1564,7 +1557,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
                     height: prev.height < 75 ? 144 : 60 
                   }));
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-muted-foreground hover:text-foreground"
                 title="Minimize/Restore"
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -1580,7 +1573,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
             autoPlay 
             muted 
             playsInline 
-            className="rounded-lg bg-gray-900 object-cover pointer-events-none"
+            className="rounded-lg bg-black object-cover pointer-events-none"
             style={{
               width: `${cameraSize.width}px`,
               height: `${cameraSize.height}px`
@@ -1589,7 +1582,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
           
           {/* Resize handle */}
           <div
-            className="resize-handle absolute bottom-0 right-0 w-4 h-4 cursor-nw-resize bg-cyan-600 rounded-tl-lg opacity-70 hover:opacity-100 transition-opacity"
+            className="resize-handle absolute bottom-0 right-0 w-4 h-4 cursor-nw-resize bg-ai-600 rounded-tl-lg opacity-70 hover:opacity-100 transition-opacity"
             onMouseDown={handleResizeMouseDown}
             title="Drag to resize"
           >
@@ -1622,11 +1615,11 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
           )}
         </div>
         
-        <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-          interviewState === InterviewState.LISTENING ? 'bg-blue-800 text-blue-200' : 
-          interviewState === InterviewState.SPEAKING ? 'bg-purple-800 text-purple-200' :
-          interviewState === InterviewState.THINKING ? 'bg-yellow-800 text-yellow-200' :
-          'bg-gray-800 text-gray-200'
+        <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium border ${
+          interviewState === InterviewState.LISTENING ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' : 
+          interviewState === InterviewState.SPEAKING ? 'bg-ai-50 text-ai-700 border-ai-200 dark:bg-ai-900/30 dark:text-ai-300 dark:border-ai-800' :
+          interviewState === InterviewState.THINKING ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800' :
+          'bg-muted text-muted-foreground border-border'
         }`}>
           <div className={`w-2 h-2 rounded-full ${
             interviewState === InterviewState.LISTENING ? 'bg-blue-400 animate-pulse' : 
@@ -1645,7 +1638,7 @@ const AICompanionPage: React.FC<{ user: any }> = ({ user }) => {
 
       <main className="flex-grow flex gap-6 overflow-hidden">
         <div className="w-4/5 flex flex-col gap-4">
-          <div className="flex-shrink-0 bg-gradient-to-br from-gray-800 to-gray-700 rounded-xl p-4 flex flex-col items-center justify-center relative h-[500px] shadow-2xl border border-gray-600">
+          <div className="flex-shrink-0 card-interactive bg-card rounded-xl p-4 flex flex-col items-center justify-center relative h-[500px] border border-border">
             {useWebGLAvatar ? (
               <WebGLAvatar interviewState={interviewState} isAudioPlaying={isAudioPlaying} />
             ) : (

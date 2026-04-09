@@ -9,9 +9,9 @@ const FillerWordBadge: React.FC<{ word: string; count: number }> = ({
   word,
   count,
 }) => (
-  <div className="bg-gradient-to-r from-red-600 to-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg">
+  <div className="bg-destructive text-destructive-foreground text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm">
     <span>{word}</span>
-    <span className="bg-white bg-opacity-20 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
+    <span className="bg-background/20 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full">
       {count}
     </span>
   </div>
@@ -41,7 +41,7 @@ const SentimentIndicator: React.FC<{ sentiment: Sentiment }> = ({
 
   return (
     <div
-      className={`flex items-center space-x-3 p-3 rounded-lg border ${borderColor} bg-gray-800 bg-opacity-50`}
+      className={`flex items-center space-x-3 p-3 rounded-lg border ${borderColor} bg-muted`}
     >
       <div className={`w-4 h-4 rounded-full ${bgColor} animate-pulse`}></div>
       <span className="text-gray-200 font-medium">{sentiment.label}</span>
@@ -60,18 +60,18 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
     metrics.sentimentHistory[metrics.sentimentHistory.length - 1];
 
   return (
-    <div className="bg-gradient-to-br from-gray-800 to-gray-700 backdrop-blur-sm rounded-xl p-4 space-y-4 w-full h-full shadow-xl border border-gray-600">
+    <div className="bg-card backdrop-blur-sm rounded-xl p-4 space-y-4 w-full h-full shadow-sm border border-border">
       <div className="text-center mb-3">
-        <h2 className="text-lg font-bold text-cyan-400 mb-1">
+        <h2 className="text-lg font-bold text-ai-600 dark:text-ai-400 mb-1">
           Interview Feedback
         </h2>
-        <p className="text-xs text-gray-400">Real-time metrics</p>
+        <p className="text-xs text-muted-foreground">Real-time metrics</p>
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-200 mb-2 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
           <svg
-            className="w-4 h-4 text-cyan-400"
+            className="w-4 h-4 text-ai-600 dark:text-ai-400"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -83,9 +83,9 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
           </svg>
           Pace
         </h3>
-        <div className="relative h-8 w-full bg-gray-700 rounded-lg overflow-hidden border border-gray-600 shadow-inner">
+        <div className="relative h-8 w-full bg-muted rounded-lg overflow-hidden border border-border shadow-inner">
           <div
-            className="absolute top-0 left-0 h-full bg-gradient-to-r from-cyan-500 to-cyan-600 transition-all duration-700 ease-out shadow-lg"
+            className="absolute top-0 left-0 h-full bg-ai-500 transition-all duration-700 ease-out shadow-sm"
             style={{ width: `${Math.min(100, (metrics.pace / 180) * 100)}%` }}
           ></div>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -94,15 +94,15 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
             </span>
           </div>
         </div>
-        <div className="flex justify-between text-xs text-gray-400 mt-1">
+        <div className="flex justify-between text-xs text-muted-foreground mt-1">
           <span>Slow</span>
-          <span className="text-cyan-400 font-medium">140-160</span>
+          <span className="text-ai-600 dark:text-ai-400 font-medium">140-160</span>
           <span>Fast</span>
         </div>
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-200 mb-2 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
           <svg
             className="w-4 h-4 text-red-400"
             fill="currentColor"
@@ -116,7 +116,7 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
           </svg>
           Filler Words
         </h3>
-        <div className="h-20 overflow-y-auto p-2 rounded-lg bg-gray-900 bg-opacity-40 border border-gray-600">
+        <div className="h-20 overflow-y-auto p-2 rounded-lg bg-muted border border-border">
           {sortedFillerWords.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {sortedFillerWords.map(([word, count]) => (
@@ -124,9 +124,9 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
               ))}
             </div>
           ) : (
-            <div className="text-center text-gray-400 h-full flex flex-col items-center justify-center">
+            <div className="text-center text-muted-foreground h-full flex flex-col items-center justify-center">
               <svg
-                className="w-6 h-6 mb-1 text-green-400"
+                className="w-6 h-6 mb-1 text-green-500"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -144,7 +144,7 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-200 mb-2 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
           <svg
             className="w-4 h-4 text-yellow-400"
             fill="currentColor"
@@ -161,9 +161,9 @@ const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ metrics }) => {
         {lastSentiment ? (
           <SentimentIndicator sentiment={lastSentiment} />
         ) : (
-          <div className="text-center text-gray-400 p-3 bg-gray-800 bg-opacity-50 rounded-lg border border-gray-600">
+          <div className="text-center text-muted-foreground p-3 bg-muted rounded-lg border border-border">
             <svg
-              className="w-6 h-6 mx-auto mb-1 text-gray-500"
+              className="w-6 h-6 mx-auto mb-1 text-muted-foreground"
               fill="currentColor"
               viewBox="0 0 20 20"
             >

@@ -1,5 +1,6 @@
 const express = require("express");
 const { body, validationResult } = require("express-validator");
+const mongoose = require("mongoose");
 const User = require("../models/User");
 const { verifyTokenMiddleware, requireRole } = require("../utils/jwtUtils");
 const { authenticateToken } = require("../middleware/auth");
@@ -13,6 +14,56 @@ const hasUserId = (list, userId) => {
   if (!Array.isArray(list) || !userId) return false;
   const target = userId.toString();
   return list.some((id) => id.toString() === target);
+};
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+const areUsersBlocked = (currentUser, targetUser) => {
+  if (!currentUser || !targetUser) return false;
+  const currentUserId = (currentUser._id || currentUser.id || "").toString();
+  const targetUserId = (targetUser._id || targetUser.id || "").toString();
+
+  return (
+    hasUserId(currentUser.blockedUsers, targetUserId) ||
+    hasUserId(currentUser.blockedBy, targetUserId) ||
+    hasUserId(targetUser.blockedUsers, currentUserId) ||
+    hasUserId(targetUser.blockedBy, currentUserId)
+  );
+};
+
+const appendFollowRequestActions = async (ownerId, actions) => {
+  if (!ownerId || !Array.isArray(actions) || actions.length === 0) {
+    return;
+  }
+
+  const normalizedActions = actions
+    .filter(
+      (action) =>
+        action &&
+        action.requester &&
+        action.actionBy &&
+        ["accepted", "rejected", "blocked"].includes(action.action)
+    )
+    .map((action) => ({
+      requester: action.requester,
+      actionBy: action.actionBy,
+      action: action.action,
+      source: action.source === "bulk" ? "bulk" : "single",
+      createdAt: action.createdAt || new Date(),
+    }));
+
+  if (normalizedActions.length === 0) {
+    return;
+  }
+
+  await User.findByIdAndUpdate(ownerId, {
+    $push: {
+      followRequestActions: {
+        $each: normalizedActions,
+        $slice: -200,
+      },
+    },
+  });
 };
 
 // Apply authentication middleware to all routes
@@ -424,11 +475,78 @@ router.get(
   asyncHandler(async (req, res) => {
     const currentUser = await User.findById(req.user.id)
       .populate("followRequests", "name username profilePicture")
-      .select("followRequests");
+      .populate("blockedUsers", "name username profilePicture")
+      .select("followRequests blockedUsers blockedBy");
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const blockedIdSet = new Set([
+      ...(currentUser.blockedUsers || []).map((blockedUser) =>
+        blockedUser._id ? blockedUser._id.toString() : blockedUser.toString()
+      ),
+      ...(currentUser.blockedBy || []).map((id) => id.toString()),
+    ]);
+
+    const followRequests = (currentUser.followRequests || []).filter(
+      (followRequestUser) => !blockedIdSet.has(followRequestUser._id.toString())
+    );
 
     res.json({
       success: true,
-      data: { followRequests: currentUser.followRequests || [] },
+      data: {
+        followRequests,
+        blockedUsers: currentUser.blockedUsers || [],
+      },
+    });
+  })
+);
+
+// @route   GET /api/users/follow-requests/history
+// @desc    Get follow request action history for current user
+// @access  Private
+router.get(
+  "/follow-requests/history",
+  asyncHandler(async (req, res) => {
+    const requestedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isNaN(requestedLimit)
+      ? 30
+      : Math.max(1, Math.min(requestedLimit, 100));
+
+    const currentUser = await User.findById(req.user.id)
+      .select("followRequestActions")
+      .populate("followRequestActions.requester", "name username profilePicture")
+      .populate("followRequestActions.actionBy", "name username profilePicture");
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const actions = [...(currentUser.followRequestActions || [])]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit)
+      .map((action) => ({
+        _id: action._id,
+        requester: action.requester,
+        actionBy: action.actionBy,
+        action: action.action,
+        source: action.source || "single",
+        createdAt: action.createdAt,
+      }));
+
+    res.json({
+      success: true,
+      data: {
+        actions,
+        total: currentUser.followRequestActions?.length || 0,
+      },
     });
   })
 );
@@ -654,6 +772,13 @@ router.get(
 router.post(
   "/follow/:id",
   asyncHandler(async (req, res) => {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     if (req.user.id === req.params.id) {
       return res.status(400).json({
         success: false,
@@ -670,6 +795,14 @@ router.post(
     }
 
     const currentUser = await User.findById(req.user.id);
+
+    if (areUsersBlocked(currentUser, userToFollow)) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You cannot follow this user because one of you has blocked the other",
+      });
+    }
 
     // Check if already following
     if (hasUserId(currentUser.following, req.params.id)) {
@@ -740,11 +873,30 @@ router.post(
     const requesterId = req.params.id;
     const currentUserId = req.user.id;
 
-    const currentUser = await User.findById(currentUserId);
-    if (!currentUser) {
+    if (!isValidObjectId(requesterId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid requester ID",
+      });
+    }
+
+    const [currentUser, requester] = await Promise.all([
+      User.findById(currentUserId),
+      User.findById(requesterId),
+    ]);
+
+    if (!currentUser || !requester) {
       return res.status(404).json({
         success: false,
         message: "User not found",
+      });
+    }
+
+    if (areUsersBlocked(currentUser, requester)) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You cannot accept this request while either user is blocked. Unblock first.",
       });
     }
 
@@ -766,6 +918,15 @@ router.post(
       $pull: { pendingFollowRequests: currentUserId },
       $addToSet: { following: currentUserId },
     });
+
+    await appendFollowRequestActions(currentUserId, [
+      {
+        requester: requesterId,
+        actionBy: currentUserId,
+        action: "accepted",
+        source: "single",
+      },
+    ]);
 
     // Create notification for the requester (follow request accepted)
     const Notification = require("../models/Notification");
@@ -792,8 +953,19 @@ router.post(
     const requesterId = req.params.id;
     const currentUserId = req.user.id;
 
-    const currentUser = await User.findById(currentUserId);
-    if (!currentUser) {
+    if (!isValidObjectId(requesterId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid requester ID",
+      });
+    }
+
+    const [currentUser, requester] = await Promise.all([
+      User.findById(currentUserId),
+      User.findById(requesterId),
+    ]);
+
+    if (!currentUser || !requester) {
       return res.status(404).json({
         success: false,
         message: "User not found",
@@ -816,6 +988,15 @@ router.post(
     await User.findByIdAndUpdate(requesterId, {
       $pull: { pendingFollowRequests: currentUserId },
     });
+
+    await appendFollowRequestActions(currentUserId, [
+      {
+        requester: requesterId,
+        actionBy: currentUserId,
+        action: "rejected",
+        source: "single",
+      },
+    ]);
 
     res.json({
       success: true,
@@ -847,8 +1028,19 @@ router.post(
       });
     }
 
+    const normalizedUserIds = [...new Set(userIds.map((id) => id?.toString()))].filter(
+      (id) => id && isValidObjectId(id)
+    );
+
+    if (normalizedUserIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid user IDs provided",
+      });
+    }
+
     const currentUser = await User.findById(currentUserId).select(
-      "followRequests"
+      "followRequests blockedUsers blockedBy name"
     );
     if (!currentUser) {
       return res.status(404).json({
@@ -857,7 +1049,7 @@ router.post(
       });
     }
 
-    const validRequesterIds = userIds.filter((requesterId) =>
+    const validRequesterIds = normalizedUserIds.filter((requesterId) =>
       hasUserId(currentUser.followRequests, requesterId)
     );
 
@@ -868,15 +1060,50 @@ router.post(
       });
     }
 
+    let processRequesterIds = validRequesterIds;
+    let skippedBlockedRequesterIds = [];
+
+    if (action === "accept") {
+      const requesterUsers = await User.find({
+        _id: { $in: validRequesterIds },
+      }).select("blockedUsers blockedBy");
+
+      const blockedRequesterIdSet = new Set(
+        requesterUsers
+          .filter((requesterUser) => areUsersBlocked(currentUser, requesterUser))
+          .map((requesterUser) => requesterUser._id.toString())
+      );
+
+      processRequesterIds = validRequesterIds.filter(
+        (requesterId) => !blockedRequesterIdSet.has(requesterId)
+      );
+      skippedBlockedRequesterIds = validRequesterIds.filter((requesterId) =>
+        blockedRequesterIdSet.has(requesterId)
+      );
+    }
+
+    if (processRequesterIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          action === "accept"
+            ? "All selected requests were skipped because one of the users is blocked"
+            : "No valid follow requests found for provided users",
+        data: {
+          skippedBlockedUserIds: skippedBlockedRequesterIds,
+        },
+      });
+    }
+
     await User.findByIdAndUpdate(currentUserId, {
-      $pull: { followRequests: { $in: validRequesterIds } },
+      $pull: { followRequests: { $in: processRequesterIds } },
       ...(action === "accept"
-        ? { $addToSet: { followers: { $each: validRequesterIds } } }
+        ? { $addToSet: { followers: { $each: processRequesterIds } } }
         : {}),
     });
 
     await User.updateMany(
-      { _id: { $in: validRequesterIds } },
+      { _id: { $in: processRequesterIds } },
       {
         $pull: { pendingFollowRequests: currentUserId },
         ...(action === "accept"
@@ -885,14 +1112,24 @@ router.post(
       }
     );
 
+    await appendFollowRequestActions(
+      currentUserId,
+      processRequesterIds.map((requesterId) => ({
+        requester: requesterId,
+        actionBy: currentUserId,
+        action: action === "accept" ? "accepted" : "rejected",
+        source: "bulk",
+      }))
+    );
+
     if (action === "accept") {
       const Notification = require("../models/Notification");
-      const currentUserFull = await User.findById(currentUserId).select("name");
+      const currentUserName = currentUser?.name || "User";
 
       await Notification.insertMany(
-        validRequesterIds.map((requesterId) => ({
+        processRequesterIds.map((requesterId) => ({
           type: "follow_accepted",
-          message: `${currentUserFull?.name || "User"} accepted your follow request`,
+          message: `${currentUserName} accepted your follow request`,
           userId: requesterId,
           user: currentUserId,
         }))
@@ -907,8 +1144,9 @@ router.post(
           : "Follow requests rejected",
       data: {
         action,
-        processed: validRequesterIds.length,
-        userIds: validRequesterIds,
+        processed: processRequesterIds.length,
+        userIds: processRequesterIds,
+        skippedBlockedUserIds: skippedBlockedRequesterIds,
       },
     });
   })
@@ -1020,6 +1258,13 @@ router.post(
     const userToBlockId = req.params.id;
     const currentUserId = req.user.id;
 
+    if (!isValidObjectId(userToBlockId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     if (userToBlockId === currentUserId) {
       return res.status(400).json({
         success: false,
@@ -1045,19 +1290,42 @@ router.post(
       });
     }
 
+    const hadIncomingFollowRequest = hasUserId(
+      currentUser.followRequests,
+      userToBlockId
+    );
+
     // Add to blocked users
     await User.findByIdAndUpdate(currentUserId, {
       $addToSet: { blockedUsers: userToBlockId },
-    });
-
-    // Remove from following/followers if they exist
-    await User.findByIdAndUpdate(currentUserId, {
-      $pull: { following: userToBlockId, followers: userToBlockId },
+      $pull: {
+        following: userToBlockId,
+        followers: userToBlockId,
+        followRequests: userToBlockId,
+        pendingFollowRequests: userToBlockId,
+      },
     });
 
     await User.findByIdAndUpdate(userToBlockId, {
-      $pull: { following: currentUserId, followers: currentUserId },
+      $addToSet: { blockedBy: currentUserId },
+      $pull: {
+        following: currentUserId,
+        followers: currentUserId,
+        followRequests: currentUserId,
+        pendingFollowRequests: currentUserId,
+      },
     });
+
+    if (hadIncomingFollowRequest) {
+      await appendFollowRequestActions(currentUserId, [
+        {
+          requester: userToBlockId,
+          actionBy: currentUserId,
+          action: "blocked",
+          source: "single",
+        },
+      ]);
+    }
 
     res.json({
       success: true,
@@ -1074,6 +1342,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const userToUnblockId = req.params.id;
     const currentUserId = req.user.id;
+
+    if (!isValidObjectId(userToUnblockId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
 
     if (userToUnblockId === currentUserId) {
       return res.status(400).json({
@@ -1101,6 +1376,10 @@ router.post(
     // Remove from blocked users
     await User.findByIdAndUpdate(currentUserId, {
       $pull: { blockedUsers: userToUnblockId },
+    });
+
+    await User.findByIdAndUpdate(userToUnblockId, {
+      $pull: { blockedBy: currentUserId },
     });
 
     res.json({

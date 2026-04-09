@@ -31,6 +31,7 @@ import {
   LockClosedIcon,
   GlobeAltIcon,
 } from "@heroicons/react/24/outline";
+import { apiClient } from "../../lib/apiClient";
 
 interface User {
   id: string;
@@ -149,8 +150,8 @@ const ModernAdminDashboard: React.FC<ModernAdminDashboardProps> = ({
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        "http://localhost:5000/api/admin/dashboard",
+      const response = await apiClient.fetch(
+        "/admin/dashboard",
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -217,8 +218,8 @@ const ModernAdminDashboard: React.FC<ModernAdminDashboardProps> = ({
     setActionLoading(userId);
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}/${action}`,
+      const response = await apiClient.fetch(
+        `/admin/users/${userId}/${action}`,
         {
           method: "POST",
           headers: {
@@ -245,8 +246,8 @@ const ModernAdminDashboard: React.FC<ModernAdminDashboardProps> = ({
     setActionLoading(userId);
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}/role`,
+      const response = await apiClient.fetch(
+        `/admin/users/${userId}/role`,
         {
           method: "PUT",
           headers: {
@@ -277,8 +278,8 @@ const ModernAdminDashboard: React.FC<ModernAdminDashboardProps> = ({
   ) => {
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}/permissions`,
+      const response = await apiClient.fetch(
+        `/admin/users/${userId}/permissions`,
         {
           method: "PUT",
           headers: {
@@ -306,8 +307,8 @@ const ModernAdminDashboard: React.FC<ModernAdminDashboardProps> = ({
   const generateAdminToken = async () => {
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        "http://localhost:5000/api/admin/generate-token",
+      const response = await apiClient.fetch(
+        "/admin/generate-token",
         {
           method: "POST",
           headers: {
@@ -331,7 +332,7 @@ const ModernAdminDashboard: React.FC<ModernAdminDashboardProps> = ({
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5000/api/auth/admin/google";
+     window.location.href = apiClient.getApiUrl("/auth/admin/google");
   };
 
   const filteredUsers = users.filter((user) => {

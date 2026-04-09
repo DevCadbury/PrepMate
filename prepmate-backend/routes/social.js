@@ -1,9 +1,11 @@
 const express = require("express");
 const { body, validationResult } = require("express-validator");
+const mongoose = require("mongoose");
 // Removed asyncHandler dependency
 const { authenticateToken } = require("../middleware/auth");
 const Post = require("../models/Post");
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
 const logger = require("../utils/logger");
@@ -53,10 +55,73 @@ const detectLanguage = (code) => {
 
 const router = express.Router();
 
+const DOCUMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/zip",
+  "application/x-zip-compressed",
+]);
+
+const escapeRegExp = (value = "") =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const resolveUploadedMediaType = (mimetype = "") => {
+  if (mimetype.startsWith("image/")) return "image";
+  if (mimetype.startsWith("video/")) return "video";
+  if (mimetype.startsWith("audio/")) return "audio";
+  return "document";
+};
+
+const resolveCloudinaryResourceType = (mediaType) => {
+  if (mediaType === "image") return "image";
+  if (mediaType === "video" || mediaType === "audio") return "video";
+  return "raw";
+};
+
 const hasUserId = (list, userId) => {
   if (!Array.isArray(list) || !userId) return false;
   const target = userId.toString();
   return list.some((id) => id.toString() === target);
+};
+
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+
+const appendFollowRequestAction = async ({
+  ownerId,
+  requesterId,
+  actionBy,
+  action,
+  source = "single",
+}) => {
+  if (
+    !ownerId ||
+    !requesterId ||
+    !actionBy ||
+    !["accepted", "rejected", "blocked"].includes(action)
+  ) {
+    return;
+  }
+
+  await User.findByIdAndUpdate(ownerId, {
+    $push: {
+      followRequestActions: {
+        $each: [
+          {
+            requester: requesterId,
+            actionBy,
+            action,
+            source: source === "bulk" ? "bulk" : "single",
+            createdAt: new Date(),
+          },
+        ],
+        $slice: -200,
+      },
+    },
+  });
 };
 
 const isBlockedBetweenUsers = (currentUser, targetUser) => {
@@ -88,11 +153,13 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     if (
       file.mimetype.startsWith("image/") ||
-      file.mimetype.startsWith("video/")
+      file.mimetype.startsWith("video/") ||
+      file.mimetype.startsWith("audio/") ||
+      DOCUMENT_MIME_TYPES.has(file.mimetype)
     ) {
       cb(null, true);
     } else {
-      cb(new Error("Only image and video files are allowed"), false);
+      cb(new Error("Only image, video, audio, and document files are allowed"), false);
     }
   },
 });
@@ -302,29 +369,66 @@ router.post(
         }
       }
 
+      let parsedHashtags = hashtags;
+      if (typeof hashtags === "string") {
+        try {
+          parsedHashtags = JSON.parse(hashtags);
+        } catch (error) {
+          parsedHashtags = [];
+        }
+      }
+
+      let parsedMentions = mentions;
+      if (typeof mentions === "string") {
+        try {
+          parsedMentions = JSON.parse(mentions);
+        } catch (error) {
+          parsedMentions = [];
+        }
+      }
+
+      if (!Array.isArray(parsedMentions)) {
+        parsedMentions = [];
+      }
+
+      if (parsedMentions.length === 0 && type !== "code" && typeof content === "string") {
+        parsedMentions = Array.from(
+          new Set((content.match(/@([a-zA-Z0-9_]{2,30})/g) || []).map((value) => value.slice(1)))
+        );
+      }
+
       // Upload media files to Cloudinary if any
       const media = [];
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
           try {
+            const mediaType = resolveUploadedMediaType(file.mimetype);
+            const resourceType = resolveCloudinaryResourceType(mediaType);
+
+            const uploadOptions = {
+              folder: "prepmate/posts",
+              resource_type: resourceType,
+            };
+
+            if (mediaType === "image" || mediaType === "video") {
+              uploadOptions.transformation = [
+                { width: 1200, height: 1200, crop: "limit" },
+                { quality: "auto" },
+              ];
+            }
+
             const result = await cloudinary.uploader.upload(
               `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
-              {
-                folder: "prepmate/posts",
-                resource_type: file.mimetype.startsWith("video/")
-                  ? "video"
-                  : "image",
-                transformation: [
-                  { width: 1200, height: 1200, crop: "limit" },
-                  { quality: "auto" },
-                ],
-              }
+              uploadOptions
             );
 
             media.push({
               url: result.secure_url,
-              type: file.mimetype.startsWith("video/") ? "video" : "image",
-              thumbnail: result.secure_url,
+              type: mediaType,
+              thumbnail:
+                mediaType === "image" || mediaType === "video"
+                  ? result.secure_url
+                  : undefined,
               size: file.size,
               filename: file.originalname,
               cloudinaryId: result.public_id,
@@ -341,10 +445,19 @@ router.post(
 
       // Process mentions
       const mentionUsers = [];
-      if (mentions && mentions.length > 0) {
-        for (const mention of mentions) {
+      if (parsedMentions && parsedMentions.length > 0) {
+        for (const mentionRaw of parsedMentions) {
+          const mention = String(mentionRaw || "").replace(/^@/, "").trim();
+          if (!mention) {
+            continue;
+          }
+
+          const escapedMention = escapeRegExp(mention);
           const user = await User.findOne({
-            $or: [{ username: mention }, { name: mention }],
+            $or: [
+              { username: new RegExp(`^${escapedMention}$`, "i") },
+              { name: new RegExp(`^${escapedMention}$`, "i") },
+            ],
           });
           if (user) {
             mentionUsers.push(user._id);
@@ -376,16 +489,39 @@ router.post(
         }
       }
 
+      const normalizedContent = typeof content === "string" ? content.trim() : "";
+      const primarySnippet = Array.isArray(codeSnippets) ? codeSnippets[0] : null;
+      const snippetDescription =
+        typeof primarySnippet?.description === "string"
+          ? primarySnippet.description.trim()
+          : "";
+      const snippetLanguage =
+        typeof primarySnippet?.language === "string" && primarySnippet.language.trim()
+          ? primarySnippet.language.trim().toLowerCase()
+          : "code";
+
+      // Keep content populated for schema compatibility and better feed previews.
+      let postContent = normalizedContent;
+      if (type === "code") {
+        postContent = snippetDescription || `Shared a ${snippetLanguage} snippet`;
+      } else if (!postContent && media.length > 0) {
+        postContent = "Shared media";
+      }
+
       // Create the post
       const post = new Post({
         user: req.user.id,
-        content: type === "code" ? "" : content, // Don't store code in content field
+        content: postContent,
         type,
         media,
         codeSnippets: codeSnippets.length > 0 ? codeSnippets : undefined,
         visibility,
-        tags: parsedTags.map((tag) => tag.toLowerCase().trim()),
-        hashtags: hashtags.map((hashtag) => hashtag.toLowerCase().trim()),
+        tags: (Array.isArray(parsedTags) ? parsedTags : []).map((tag) =>
+          String(tag).toLowerCase().trim()
+        ),
+        hashtags: (Array.isArray(parsedHashtags) ? parsedHashtags : []).map((hashtag) =>
+          String(hashtag).toLowerCase().trim()
+        ),
         mentions: mentionUsers,
         location,
         category,
@@ -398,6 +534,31 @@ router.post(
       // Populate user data
       await post.populate("user", "name username profilePicture");
       await post.populate("mentions", "name username profilePicture");
+
+      const uniqueMentionUserIds = Array.from(
+        new Set(mentionUsers.map((id) => id.toString()))
+      ).filter((id) => id !== req.user.id.toString());
+
+      if (uniqueMentionUserIds.length > 0) {
+        try {
+          await Notification.insertMany(
+            uniqueMentionUserIds.map((mentionedUserId) => ({
+              type: "mention",
+              category: "social",
+              message: `${req.user.name} mentioned you in a post`,
+              userId: mentionedUserId,
+              user: req.user.id,
+              postId: post._id,
+              metadata: {
+                postId: post._id,
+                postType: post.type,
+              },
+            }))
+          );
+        } catch (notificationError) {
+          logger.error("Failed to create mention notifications:", notificationError);
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -864,6 +1025,7 @@ router.get("/posts/feed", authenticateToken, async (req, res) => {
     })
       .populate("user", "name username profilePicture")
       .populate("comments.user", "name username profilePicture")
+      .populate("comments.replies.user", "name username profilePicture")
       .sort({ createdAt: -1 })
       .limit(parsedLimit * 3)
       .skip((parsedPage - 1) * parsedLimit);
@@ -1051,6 +1213,7 @@ router.get("/posts/user/:userId", authenticateToken, async (req, res) => {
     const posts = await Post.find(query)
       .populate("user", "name username profilePicture")
       .populate("comments.user", "name username profilePicture")
+      .populate("comments.replies.user", "name username profilePicture")
       .populate("likes.user", "name username profilePicture")
       .populate("shares.user", "name username profilePicture")
       .populate("bookmarks.user", "name username profilePicture")
@@ -1154,6 +1317,7 @@ router.get("/posts/:postId", async (req, res) => {
     const post = await Post.findById(req.params.postId)
       .populate("user", "name username profilePicture")
       .populate("comments.user", "name username profilePicture")
+      .populate("comments.replies.user", "name username profilePicture")
       .populate("likes.user", "name username profilePicture")
       .populate("shares.user", "name username profilePicture")
       .populate("bookmarks.user", "name username profilePicture")
@@ -1257,6 +1421,63 @@ router.put(
     }
   }
 );
+
+// @desc    Report a post for moderation
+// @route   POST /api/social/posts/:postId/report
+// @access  Private
+router.post("/posts/:postId/report", authenticateToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const reporterId = req.user.id;
+    const reason = String(req.body.reason || "").trim();
+
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    const alreadyPending = Array.isArray(post.reports)
+      ? post.reports.some(
+          (report) =>
+            report.reporter?.toString() === reporterId && report.status === "pending"
+        )
+      : false;
+
+    if (alreadyPending) {
+      return res.status(400).json({
+        success: false,
+        message: "You already reported this post",
+      });
+    }
+
+    post.reports.push({
+      reporter: reporterId,
+      reason,
+      status: "pending",
+      createdAt: new Date(),
+    });
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: "Post reported successfully",
+      data: {
+        pendingReports: post.reports.filter((report) => report.status === "pending")
+          .length,
+      },
+    });
+  } catch (error) {
+    console.error("Error reporting post:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
 
 // @desc    Like/unlike a post
 // @route   POST /api/social/posts/:postId/like
@@ -1418,10 +1639,9 @@ router.post("/posts/:postId/share", authenticateToken, async (req, res) => {
 router.get("/posts/:postId/comments", authenticateToken, async (req, res) => {
   try {
     const { postId } = req.params;
-    const post = await Post.findById(postId).populate(
-      "comments.user",
-      "name username profilePicture"
-    );
+    const post = await Post.findById(postId)
+      .populate("comments.user", "name username profilePicture")
+      .populate("comments.replies.user", "name username profilePicture");
 
     if (!post) {
       return res.status(404).json({
@@ -1430,12 +1650,27 @@ router.get("/posts/:postId/comments", authenticateToken, async (req, res) => {
       });
     }
 
-    const comments = (post.comments || []).map((comment) => ({
-      ...comment.toObject(),
-      isLiked: (comment.likes || []).some(
-        (id) => id.toString() === req.user.id.toString()
-      ),
-    }));
+    const comments = (post.comments || []).map((comment) => {
+      const commentObj = comment.toObject();
+
+      return {
+        ...commentObj,
+        likes: (comment.likes || []).length,
+        isLiked: (comment.likes || []).some(
+          (id) => id.toString() === req.user.id.toString()
+        ),
+        replies: (comment.replies || []).map((reply) => {
+          const replyObj = reply.toObject ? reply.toObject() : reply;
+          return {
+            ...replyObj,
+            likes: (reply.likes || []).length,
+            isLiked: (reply.likes || []).some(
+              (id) => id.toString() === req.user.id.toString()
+            ),
+          };
+        }),
+      };
+    });
 
     res.json({
       success: true,
@@ -1450,6 +1685,74 @@ router.get("/posts/:postId/comments", authenticateToken, async (req, res) => {
     });
   }
 });
+
+// @desc    Reply to a post comment
+// @route   POST /api/social/posts/:postId/comments/:commentId/replies
+// @access  Private
+router.post(
+  "/posts/:postId/comments/:commentId/replies",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { postId, commentId } = req.params;
+      const { content } = req.body;
+
+      if (!content || !content.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Reply content is required",
+        });
+      }
+
+      const post = await Post.findById(postId);
+      if (!post) {
+        return res.status(404).json({
+          success: false,
+          message: "Post not found",
+        });
+      }
+
+      const comment = post.comments.id(commentId);
+      if (!comment) {
+        return res.status(404).json({
+          success: false,
+          message: "Comment not found",
+        });
+      }
+
+      comment.replies.push({
+        user: req.user.id,
+        content: content.trim(),
+        likes: [],
+      });
+
+      await post.save();
+      await post.populate("comments.replies.user", "name username profilePicture");
+
+      const updatedComment = post.comments.id(commentId);
+      const latestReply = updatedComment.replies[updatedComment.replies.length - 1];
+
+      res.status(201).json({
+        success: true,
+        message: "Reply added successfully",
+        data: {
+          commentId,
+          reply: {
+            ...latestReply.toObject(),
+            likes: 0,
+            isLiked: false,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error adding reply to comment:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
 
 // @desc    Add comment to a post
 // @route   POST /api/social/posts/:postId/comments
@@ -1482,6 +1785,7 @@ router.post("/posts/:postId/comments", authenticateToken, async (req, res) => {
     });
     await post.save();
     await post.populate("comments.user", "name username profilePicture");
+    await post.populate("comments.replies.user", "name username profilePicture");
 
     const comment = post.comments[0];
 
@@ -1686,6 +1990,13 @@ router.post("/users/:userId/block", authenticateToken, async (req, res) => {
     const targetUserId = req.params.userId;
     const currentUserId = req.user.id;
 
+    if (!isValidObjectId(targetUserId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     if (targetUserId === currentUserId) {
       return res.status(400).json({
         success: false,
@@ -1705,6 +2016,11 @@ router.post("/users/:userId/block", authenticateToken, async (req, res) => {
       });
     }
 
+    const hadIncomingFollowRequest = hasUserId(
+      currentUser.followRequests,
+      targetUserId
+    );
+
     if (
       !(currentUser.blockedUsers || []).some(
         (id) => id.toString() === targetUserId
@@ -1713,20 +2029,52 @@ router.post("/users/:userId/block", authenticateToken, async (req, res) => {
       currentUser.blockedUsers.push(targetUserId);
     }
 
+    if (
+      !(targetUser.blockedBy || []).some(
+        (id) => id.toString() === currentUserId
+      )
+    ) {
+      targetUser.blockedBy = targetUser.blockedBy || [];
+      targetUser.blockedBy.push(currentUserId);
+    }
+
     currentUser.following = (currentUser.following || []).filter(
       (id) => id.toString() !== targetUserId
     );
     currentUser.followers = (currentUser.followers || []).filter(
       (id) => id.toString() !== targetUserId
     );
+    currentUser.followRequests = (currentUser.followRequests || []).filter(
+      (id) => id.toString() !== targetUserId
+    );
+    currentUser.pendingFollowRequests = (
+      currentUser.pendingFollowRequests || []
+    ).filter((id) => id.toString() !== targetUserId);
+
     targetUser.following = (targetUser.following || []).filter(
       (id) => id.toString() !== currentUserId
     );
     targetUser.followers = (targetUser.followers || []).filter(
       (id) => id.toString() !== currentUserId
     );
+    targetUser.followRequests = (targetUser.followRequests || []).filter(
+      (id) => id.toString() !== currentUserId
+    );
+    targetUser.pendingFollowRequests = (
+      targetUser.pendingFollowRequests || []
+    ).filter((id) => id.toString() !== currentUserId);
 
     await Promise.all([currentUser.save(), targetUser.save()]);
+
+    if (hadIncomingFollowRequest) {
+      await appendFollowRequestAction({
+        ownerId: currentUserId,
+        requesterId: targetUserId,
+        actionBy: currentUserId,
+        action: "blocked",
+        source: "single",
+      });
+    }
 
     res.json({
       success: true,
@@ -1752,6 +2100,13 @@ router.post(
       const requesterId = req.params.userId;
       const currentUserId = req.user.id;
 
+      if (!isValidObjectId(requesterId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid requester ID",
+        });
+      }
+
       const [currentUser, requester] = await Promise.all([
         User.findById(currentUserId),
         User.findById(requesterId),
@@ -1761,6 +2116,14 @@ router.post(
         return res.status(404).json({
           success: false,
           message: "User not found",
+        });
+      }
+
+      if (isBlockedBetweenUsers(currentUser, requester)) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You cannot accept this request while either user is blocked. Unblock first.",
         });
       }
 
@@ -1790,6 +2153,22 @@ router.post(
 
       await Promise.all([currentUser.save(), requester.save()]);
 
+      await appendFollowRequestAction({
+        ownerId: currentUserId,
+        requesterId,
+        actionBy: currentUserId,
+        action: "accepted",
+        source: "single",
+      });
+
+      const Notification = require("../models/Notification");
+      await Notification.create({
+        type: "follow_accepted",
+        message: `${currentUser.name} accepted your follow request`,
+        userId: requesterId,
+        user: currentUserId,
+      });
+
       res.json({
         success: true,
         message: "Follow request accepted",
@@ -1815,6 +2194,13 @@ router.post(
       const requesterId = req.params.userId;
       const currentUserId = req.user.id;
 
+      if (!isValidObjectId(requesterId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid requester ID",
+        });
+      }
+
       const [currentUser, requester] = await Promise.all([
         User.findById(currentUserId),
         User.findById(requesterId),
@@ -1827,6 +2213,16 @@ router.post(
         });
       }
 
+      const hasRequest = (currentUser.followRequests || []).some(
+        (id) => id.toString() === requesterId
+      );
+      if (!hasRequest) {
+        return res.status(400).json({
+          success: false,
+          message: "No follow request from this user",
+        });
+      }
+
       currentUser.followRequests = (currentUser.followRequests || []).filter(
         (id) => id.toString() !== requesterId
       );
@@ -1835,6 +2231,14 @@ router.post(
       );
 
       await Promise.all([currentUser.save(), requester.save()]);
+
+      await appendFollowRequestAction({
+        ownerId: currentUserId,
+        requesterId,
+        actionBy: currentUserId,
+        action: "rejected",
+        source: "single",
+      });
 
       res.json({
         success: true,

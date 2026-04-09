@@ -56,11 +56,12 @@ import {
 import { Separator } from "../../ui/separator";
 import { Badge } from "../../ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
+import { apiClient } from "../../../lib/apiClient";
 
 const SETTINGS_CARD_SURFACE =
-  "rounded-2xl border border-slate-200/80 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 backdrop-blur-sm shadow-sm hover:shadow-md transition-all duration-300";
+  "card-interactive bg-card shadow-sm border border-border";
 const SETTINGS_MUTED_SURFACE =
-  "rounded-xl border border-slate-200/80 dark:border-slate-700/70 bg-slate-50/90 dark:bg-slate-900/60";
+  "rounded-md border border-border bg-muted/30";
 
 // Enhanced Follow Requests Manager Component
 const FollowRequestsManager: React.FC = () => {
@@ -69,16 +70,24 @@ const FollowRequestsManager: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { success, error } = useToast();
   const navigate = useNavigate();
+  const fetchInFlightRef = useRef(false);
 
-  const fetchFollowRequests = async () => {
+  const buildAuthHeaders = useCallback(() => ({
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  }), []);
+
+  const fetchFollowRequests = useCallback(async (force = false) => {
+    if (fetchInFlightRef.current && !force) {
+      return;
+    }
+
+    fetchInFlightRef.current = true;
     try {
       setLoading(true);
-      const response = await fetch(
-        "http://localhost:5000/api/users/follow-requests",
+      const response = await apiClient.fetch(
+        "/users/follow-requests",
         {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          headers: buildAuthHeaders(),
         }
       );
 
@@ -90,12 +99,13 @@ const FollowRequestsManager: React.FC = () => {
       console.error("Error fetching follow requests:", error);
     } finally {
       setLoading(false);
+      fetchInFlightRef.current = false;
     }
-  };
+  }, [buildAuthHeaders]);
 
   useEffect(() => {
-    fetchFollowRequests();
-  }, []);
+    void fetchFollowRequests(true);
+  }, [fetchFollowRequests]);
 
   const handleFollowRequest = async (
     userId: string,
@@ -104,14 +114,12 @@ const FollowRequestsManager: React.FC = () => {
     try {
       const endpoint =
         action === "accept"
-          ? `http://localhost:5000/api/users/accept-follow-request/${userId}`
-          : `http://localhost:5000/api/users/reject-follow-request/${userId}`;
+          ? `/users/accept-follow-request/${userId}`
+          : `/users/reject-follow-request/${userId}`;
 
-      const response = await fetch(endpoint, {
+      const response = await apiClient.fetch(endpoint, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers: buildAuthHeaders(),
       });
 
       if (response.ok) {
@@ -119,7 +127,7 @@ const FollowRequestsManager: React.FC = () => {
           `Follow request ${action}ed!`,
           `The request has been ${action}ed successfully.`
         );
-        await fetchFollowRequests();
+        await fetchFollowRequests(true);
       } else {
         const errorData = await response.json();
         error(
@@ -142,13 +150,13 @@ const FollowRequestsManager: React.FC = () => {
 
     try {
       setLoading(true);
-      const response = await fetch(
-        "http://localhost:5000/api/users/follow-requests/bulk",
+      const response = await apiClient.fetch(
+        "/users/follow-requests/bulk",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            ...buildAuthHeaders(),
           },
           body: JSON.stringify({ action, userIds }),
         }
@@ -165,7 +173,7 @@ const FollowRequestsManager: React.FC = () => {
           : "Selected requests rejected"
       );
       setSelectedIds(new Set());
-      await fetchFollowRequests();
+      await fetchFollowRequests(true);
     } catch (err: any) {
       console.error(`Error bulk ${action}:`, err);
       error(`Failed to ${action} selected`, err?.message || "Please try again.");
@@ -299,14 +307,22 @@ const BlockedUsersManager: React.FC = () => {
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { success, error } = useToast();
+  const fetchInFlightRef = useRef(false);
 
-  const fetchBlockedUsers = async () => {
+  const buildAuthHeaders = useCallback(() => ({
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  }), []);
+
+  const fetchBlockedUsers = useCallback(async (force = false) => {
+    if (fetchInFlightRef.current && !force) {
+      return;
+    }
+
+    fetchInFlightRef.current = true;
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:5000/api/users/blocked", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+      const response = await apiClient.fetch("/users/blocked", {
+        headers: buildAuthHeaders(),
       });
 
       if (response.ok) {
@@ -317,28 +333,27 @@ const BlockedUsersManager: React.FC = () => {
       console.error("Error fetching blocked users:", error);
     } finally {
       setLoading(false);
+      fetchInFlightRef.current = false;
     }
-  };
+  }, [buildAuthHeaders]);
 
   useEffect(() => {
-    fetchBlockedUsers();
-  }, []);
+    void fetchBlockedUsers(true);
+  }, [fetchBlockedUsers]);
 
   const handleUnblockUser = async (userId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/unblock/${userId}`,
+      const response = await apiClient.fetch(
+        `/users/unblock/${userId}`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          headers: buildAuthHeaders(),
         }
       );
 
       if (response.ok) {
         success("User unblocked!", "The user has been unblocked successfully.");
-        await fetchBlockedUsers();
+        await fetchBlockedUsers(true);
       } else {
         const errorData = await response.json();
         error(
@@ -431,14 +446,14 @@ const ToggleSwitch: React.FC<{
   description: string;
   icon: React.ReactNode;
 }> = ({ checked, onCheckedChange, label, description, icon }) => (
-  <div className="group flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/60 hover:border-cyan-300 dark:hover:border-cyan-700 hover:shadow-md transition-all duration-300">
+  <div className="group flex items-center justify-between p-4 rounded-md border border-border bg-card hover:border-navy-400 hover:shadow-sm transition-all duration-300">
     <div className="flex items-center space-x-3">
-      <div className="w-10 h-10 bg-cyan-100 dark:bg-cyan-900/30 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+      <div className="w-10 h-10 bg-navy-50 dark:bg-navy-900/30 text-navy-600 dark:text-navy-400 rounded-md flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
         {icon}
       </div>
       <div>
-        <h4 className="font-medium text-slate-900 dark:text-slate-100">{label}</h4>
-        <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
+        <h4 className="font-medium text-foreground">{label}</h4>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
     </div>
     <button
@@ -448,8 +463,8 @@ const ToggleSwitch: React.FC<{
       onClick={() => onCheckedChange(!checked)}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ${
         checked
-          ? "bg-gradient-to-r from-cyan-500 to-emerald-500 shadow-lg shadow-cyan-500/30"
-          : "bg-slate-300 dark:bg-slate-600"
+          ? "bg-navy-600 shadow-sm"
+          : "bg-muted"
       }`}
     >
       <span
@@ -569,7 +584,7 @@ const SettingsPage: React.FC = () => {
         linkedin: user.profile?.socialLinks?.linkedin || "",
         github: user.profile?.socialLinks?.github || "",
         portfolio: user.profile?.socialLinks?.portfolio || "",
-        emails: [user.email] || [],
+        emails: user.email ? [user.email] : [],
         profilePicture: user.profilePicture || "",
       });
 
@@ -599,8 +614,8 @@ const SettingsPage: React.FC = () => {
 
       setUsernameCheckLoading(true);
       try {
-        const response = await fetch(
-          `http://localhost:5000/api/auth/check-username?username=${encodeURIComponent(
+        const response = await apiClient.fetch(
+          `/auth/check-username?username=${encodeURIComponent(
             username
           )}`,
           {
@@ -636,7 +651,7 @@ const SettingsPage: React.FC = () => {
         editProfileData.lastName || ""
       }`.trim();
 
-      const response = await fetch(`http://localhost:5000/api/profile`, {
+      const response = await apiClient.fetch(`/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -684,8 +699,8 @@ const SettingsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/preferences`,
+      const response = await apiClient.fetch(
+        `/users/preferences`,
         {
           method: "PUT",
           headers: {
@@ -750,8 +765,8 @@ const SettingsPage: React.FC = () => {
 
     setIsDeleting(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/auth/delete-account`,
+      const response = await apiClient.fetch(
+        `/auth/delete-account`,
         {
           method: "DELETE",
           headers: {
@@ -790,8 +805,8 @@ const SettingsPage: React.FC = () => {
 
     setIsSaving(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/auth/update-username`,
+      const response = await apiClient.fetch(
+        `/auth/update-username`,
         {
           method: "PUT",
           headers: {
@@ -855,7 +870,7 @@ const SettingsPage: React.FC = () => {
         payload.currentPassword = passwordForm.currentPassword.trim();
       }
 
-      const response = await fetch("http://localhost:5000/api/auth/change-password", {
+      const response = await apiClient.fetch("/auth/change-password", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -907,7 +922,7 @@ const SettingsPage: React.FC = () => {
         payload.currentPassword = emailForm.currentPassword.trim();
       }
 
-      const response = await fetch("http://localhost:5000/api/auth/change-email", {
+      const response = await apiClient.fetch("/auth/change-email", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -997,8 +1012,8 @@ const SettingsPage: React.FC = () => {
 
     const handleUnlinkGoogle = async () => {
       try {
-        const response = await fetch(
-          `http://localhost:5000/api/auth/unlink-google`,
+        const response = await apiClient.fetch(
+          `/auth/unlink-google`,
           {
             method: "POST",
             headers: {
@@ -1502,24 +1517,23 @@ const SettingsPage: React.FC = () => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="min-h-screen bg-[radial-gradient(circle_at_top_left,#ecfeff,transparent_40%),radial-gradient(circle_at_top_right,#fef9c3,transparent_35%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] dark:bg-[radial-gradient(circle_at_top_left,#082f49,transparent_40%),radial-gradient(circle_at_top_right,#172554,transparent_35%),linear-gradient(180deg,#020617_0%,#0f172a_100%)]"
-        style={{ fontFamily: '"Sora", "Space Grotesk", "Segoe UI", sans-serif' }}
+        className="min-h-screen bg-background py-8"
       >
         {/* Modal-like Container */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
-            className="rounded-3xl border border-slate-200/80 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-[0_20px_80px_rgba(2,8,23,0.12)] overflow-hidden"
+            className="card-interactive bg-card overflow-hidden"
           >
             {/* Header with Close Button */}
-            <div className="flex items-center justify-between p-6 sm:p-8 border-b border-slate-200/70 dark:border-slate-700/60 bg-white/70 dark:bg-slate-900/30">
+            <div className="flex items-center justify-between p-6 sm:p-8 border-b border-border">
               <div>
-                <h1 className="text-2xl sm:text-3xl tracking-tight font-semibold text-slate-900 dark:text-slate-100">
+                <h1 className="text-2xl sm:text-3xl tracking-tight font-semibold text-foreground">
                   Settings
                 </h1>
-                <p className="text-slate-600 dark:text-slate-400 mt-1 text-sm sm:text-base">
+                <p className="text-muted-foreground mt-1 text-sm sm:text-base">
                   Fine-tune account, privacy, and notifications with a cleaner control center.
                 </p>
               </div>
@@ -1527,69 +1541,54 @@ const SettingsPage: React.FC = () => {
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate(-1)}
-                className="h-10 w-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="h-5 w-5" />
               </Button>
             </div>
 
             {/* Two-Pane Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] min-h-[680px]">
+            <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr] min-h-[680px]">
               {/* Left Pane - Navigation */}
-              <div className="bg-slate-50/80 dark:bg-slate-950/50 border-r border-slate-200/70 dark:border-slate-700/60 p-6 lg:p-7">
+              <div className="bg-muted/30 border-r border-border p-6 lg:p-7">
                 <div className="space-y-6 lg:sticky lg:top-6">
                   {/* Account Section */}
                   <div>
-                    <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-1 tracking-tight">
+                    <h2 className="text-lg font-semibold text-foreground mb-1 tracking-tight">
                       Workspace
                     </h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                      Navigate quickly between preference groups.
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Navigate quickly between preferences.
                     </p>
 
                     {/* Navigation Menu */}
-                    <div className="space-y-2">
-                      <button
+                    <div className="space-y-1">
+                      <Button
+                        variant={activeTab === "account" ? "secondary" : "ghost"}
+                        className="w-full justify-start h-10 px-4"
                         onClick={() => setActiveTab("account")}
-                        className={`w-full flex items-center space-x-3 p-3.5 rounded-xl text-left transition-all duration-300 border ${
-                          activeTab === "account"
-                            ? "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700 shadow-sm"
-                            : "text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900/40"
-                        }`}
                       >
-                        <User className="h-5 w-5" />
-                        <span className="font-medium">Profile</span>
-                      </button>
+                        <User className="h-4 w-4 mr-2" />
+                        Profile
+                      </Button>
 
-                      <button
+                      <Button
+                        variant={activeTab === "privacy" ? "secondary" : "ghost"}
+                        className="w-full justify-start h-10 px-4"
                         onClick={() => setActiveTab("privacy")}
-                        className={`w-full flex items-center space-x-3 p-3.5 rounded-xl text-left transition-all duration-300 border ${
-                          activeTab === "privacy"
-                            ? "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700 shadow-sm"
-                            : "text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900/40"
-                        }`}
                       >
-                        <Shield className="h-5 w-5" />
-                        <span className="font-medium">Security</span>
-                      </button>
+                        <Shield className="h-4 w-4 mr-2" />
+                        Security
+                      </Button>
 
-                      <button
+                      <Button
+                        variant={activeTab === "notifications" ? "secondary" : "ghost"}
+                        className="w-full justify-start h-10 px-4"
                         onClick={() => setActiveTab("notifications")}
-                        className={`w-full flex items-center space-x-3 p-3.5 rounded-xl text-left transition-all duration-300 border ${
-                          activeTab === "notifications"
-                            ? "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700 shadow-sm"
-                            : "text-slate-700 dark:text-slate-300 border-transparent hover:border-slate-200 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-900/40"
-                        }`}
                       >
-                        <Bell className="h-5 w-5" />
-                        <span className="font-medium">Notifications</span>
-                      </button>
+                        <Bell className="h-4 w-4 mr-2" />
+                        Notifications
+                      </Button>
                     </div>
-                  </div>
-
-                  {/* Footer Info */}
-                  <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
-                    {/* Footer content removed - keeping the border for visual separation */}
                   </div>
                 </div>
               </div>

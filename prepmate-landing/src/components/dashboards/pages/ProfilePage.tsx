@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast, ToastContainer } from "../../ui/toast";
-import PostCard from "../../ui/post-card";
+import PostCard, { PostCardPost } from "../../ui/post-card";
 import PostCreator from "../../ui/post-creator";
 import {
   Card,
@@ -31,7 +31,10 @@ import {
 } from "../../ui/dialog";
 import {
   User,
+  Code,
   Camera,
+  Link,
+  Lock,
   MapPin,
   Building,
   Briefcase,
@@ -96,6 +99,13 @@ import {
   Search,
 } from "lucide-react";
 import cloudinaryService from "../../../services/cloudinaryService";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../ui/dropdown-menu";
+import { apiClient } from "../../../lib/apiClient";
 
 interface Post {
   id: string;
@@ -115,6 +125,58 @@ interface UserStats {
   currentStreak: number;
   achievements: number;
 }
+
+interface PostCreatedMeta {
+  optimistic?: boolean;
+  replaceId?: string;
+  removeId?: string;
+}
+
+const toArrayCount = (value: unknown) =>
+  Array.isArray(value) ? value.length : 0;
+
+const extractUserIdFromEntity = (entity: any): string => {
+  if (!entity) return "";
+  if (typeof entity === "string") return entity;
+  if (typeof entity.user === "string") return entity.user;
+  if (entity.user?._id) return entity.user._id;
+  if (entity._id) return entity._id;
+  return "";
+};
+
+const getPostLikeCount = (post: any) =>
+  typeof post.likesCount === "number"
+    ? post.likesCount
+    : typeof post.likeCount === "number"
+    ? post.likeCount
+    : toArrayCount(post.likes);
+
+const getPostCommentCount = (post: any) =>
+  typeof post.commentCount === "number"
+    ? post.commentCount
+    : toArrayCount(post.comments);
+
+const getPostShareCount = (post: any) =>
+  typeof post.shareCount === "number" ? post.shareCount : toArrayCount(post.shares);
+
+const getPostBookmarkCount = (post: any) =>
+  typeof post.bookmarkCount === "number"
+    ? post.bookmarkCount
+    : toArrayCount(post.bookmarks);
+
+const isPostLikedByUser = (post: any, currentUserId?: string) => {
+  if (typeof post?.isLiked === "boolean") return post.isLiked;
+  if (!currentUserId || !Array.isArray(post?.likes)) return false;
+  return post.likes.some((like: any) => extractUserIdFromEntity(like) === currentUserId);
+};
+
+const isPostBookmarkedByUser = (post: any, currentUserId?: string) => {
+  if (typeof post?.isBookmarked === "boolean") return post.isBookmarked;
+  if (!currentUserId || !Array.isArray(post?.bookmarks)) return false;
+  return post.bookmarks.some(
+    (bookmark: any) => extractUserIdFromEntity(bookmark) === currentUserId
+  );
+};
 
 const StatCard = ({
   icon,
@@ -382,8 +444,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     setLoadingPosts(true);
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/user/${targetUserId}`,
+      const response = await apiClient.fetch(
+        `/social/posts/user/${targetUserId}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -479,8 +541,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     lastFollowCheckRef.current = { userId: targetUserId, ts: Date.now() };
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/users/${targetUserId}/follow-status`,
+      const response = await apiClient.fetch(
+        `/social/users/${targetUserId}/follow-status`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -557,17 +619,17 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       setLoadingFollowing(true);
 
       const [followersRes, followingRes, postsRes] = await Promise.all([
-        fetch(`http://localhost:5000/api/profile/${targetUserId}/followers`, {
+        apiClient.fetch(`/profile/${targetUserId}/followers`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
         }),
-        fetch(`http://localhost:5000/api/profile/${targetUserId}/following`, {
+        apiClient.fetch(`/profile/${targetUserId}/following`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
         }),
-        fetch(`http://localhost:5000/api/profile/${targetUserId}/posts`, {
+        apiClient.fetch(`/profile/${targetUserId}/posts`, {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
@@ -754,8 +816,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     const requestedUsername = targetUsername;
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/username/${targetUsername}`,
+      const response = await apiClient.fetch(
+        `/users/username/${targetUsername}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -868,8 +930,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
       const isUnfollowing = isFollowing || followRequestSent;
       const method = isUnfollowing ? "DELETE" : "POST";
 
-      const res = await fetch(
-        `http://localhost:5000/api/social/users/${targetUserId}/follow`,
+      const res = await apiClient.fetch(
+        `/social/users/${targetUserId}/follow`,
         {
           method: method,
           headers: {
@@ -999,8 +1061,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
   const handleLike = async (postId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${postId}/like`,
+      const response = await apiClient.fetch(
+        `/social/posts/${postId}/like`,
         {
           method: "POST",
           headers: {
@@ -1029,8 +1091,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
   const handleSave = async (postId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${postId}/save`,
+      const response = await apiClient.fetch(
+        `/social/posts/${postId}/save`,
         {
           method: "POST",
           headers: {
@@ -1069,8 +1131,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     if (!postToDelete) return;
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${postToDelete}`,
+      const response = await apiClient.fetch(
+        `/social/posts/${postToDelete}`,
         {
           method: "DELETE",
           headers: {
@@ -1100,6 +1162,143 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     }
   };
 
+  const updateUserPostLocally = useCallback(
+    (postId: string, updater: (post: any) => any) => {
+      setUserPosts((prev) =>
+        prev.map((post) => {
+          const candidateId = post?._id || post?.id;
+          return candidateId === postId ? updater(post) : post;
+        })
+      );
+    },
+    []
+  );
+
+  const handleProfileLikeSync = useCallback(
+    (postId: string, isLiked: boolean, likeCount: number) => {
+      updateUserPostLocally(postId, (post) => ({
+        ...post,
+        isLiked,
+        likesCount: likeCount,
+        likeCount,
+      }));
+    },
+    [updateUserPostLocally]
+  );
+
+  const handleProfileCommentSync = useCallback(
+    (postId: string, commentCount: number) => {
+      updateUserPostLocally(postId, (post) => ({
+        ...post,
+        commentCount,
+      }));
+    },
+    [updateUserPostLocally]
+  );
+
+  const handleProfileShareSync = useCallback(
+    (postId: string, shareCount: number) => {
+      updateUserPostLocally(postId, (post) => ({
+        ...post,
+        shareCount,
+      }));
+    },
+    [updateUserPostLocally]
+  );
+
+  const handleProfileBookmarkSync = useCallback(
+    (postId: string, isBookmarked: boolean, bookmarkCount: number) => {
+      updateUserPostLocally(postId, (post) => ({
+        ...post,
+        isBookmarked,
+        bookmarkCount,
+      }));
+    },
+    [updateUserPostLocally]
+  );
+
+  const handleProfilePostCreated = useCallback(
+    (newPost: any, meta?: PostCreatedMeta) => {
+      if (meta?.removeId) {
+        setUserPosts((prev) => prev.filter((post) => (post?._id || post?.id) !== meta.removeId));
+        return;
+      }
+
+      if (!newPost) {
+        return;
+      }
+
+      const normalizedNewPost = {
+        ...newPost,
+        _id: newPost?._id || newPost?.id,
+      };
+
+      if (meta?.replaceId) {
+        setUserPosts((prev) => {
+          const replaced = prev.map((post) =>
+            (post?._id || post?.id) === meta.replaceId ? normalizedNewPost : post
+          );
+          const hasReplacement = replaced.some(
+            (post) => (post?._id || post?.id) === normalizedNewPost._id
+          );
+          return hasReplacement ? replaced : [normalizedNewPost, ...replaced];
+        });
+        return;
+      }
+
+      setUserPosts((prev) => [normalizedNewPost, ...prev]);
+    },
+    []
+  );
+
+  const mapProfilePostForCard = useCallback(
+    (post: any): PostCardPost => {
+      const fallbackAuthor = viewingOtherUser ? otherUser : user;
+      const postAuthor = post?.user || fallbackAuthor || {};
+
+      return {
+        id: post?._id || post?.id,
+        content: post?.content || "",
+        author: {
+          id: postAuthor?._id || postAuthor?.id || "unknown",
+          name: postAuthor?.name || "Unknown",
+          username: postAuthor?.username || "unknown",
+          profilePicture: postAuthor?.profilePicture,
+          role: postAuthor?.role || "user",
+        },
+        type: post?.type || "text",
+        media: Array.isArray(post?.media)
+          ? post.media
+          : post?.image
+          ? [{ type: "image", url: post.image }]
+          : [],
+        codeSnippets: Array.isArray(post?.codeSnippets)
+          ? post.codeSnippets
+          : post?.codeSnippet
+          ? [
+              {
+                language: post?.codeLanguage || "text",
+                code: post.codeSnippet,
+              },
+            ]
+          : [],
+        likes: getPostLikeCount(post),
+        comments: getPostCommentCount(post),
+        shares: getPostShareCount(post),
+        bookmarks: getPostBookmarkCount(post),
+        createdAt: post?.createdAt || new Date().toISOString(),
+        isLiked: isPostLikedByUser(post, user?.id),
+        isBookmarked: isPostBookmarkedByUser(post, user?.id),
+        tags: post?.tags || post?.hashtags || [],
+        location: post?.location,
+        mood: post?.mood,
+        isEdited: post?.isEdited,
+        viewCount: post?.viewCount,
+      };
+    },
+    [otherUser, user, user?.id, viewingOtherUser]
+  );
+
   const isViewingSelfProfile = Boolean(
     user?.id &&
       viewingOtherUser &&
@@ -1119,7 +1318,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
     try {
       // First, try to find an existing chat room with this user
-      const response = await fetch("http://localhost:5000/api/chat/rooms", {
+      const response = await apiClient.fetch("/chat/rooms", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
 
@@ -1139,8 +1338,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
           navigate(`/chat/${existingRoom._id}`);
         } else {
           // Create a new direct chat room
-          const createResponse = await fetch(
-            "http://localhost:5000/api/chat/direct",
+          const createResponse = await apiClient.fetch(
+            "/chat/direct",
             {
               method: "POST",
               headers: {
@@ -1198,7 +1397,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
         },
       };
 
-      const response = await fetch("http://localhost:5000/api/profile", {
+      const response = await apiClient.fetch("/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1290,7 +1489,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
     setUploadingImage(true);
     try {
-      const response = await fetch(previewImage);
+      const response = await apiClient.fetch(previewImage);
       const blob = await response.blob();
       const file = new File([blob], "profile-picture.jpg", {
         type: "image/jpeg",
@@ -1313,7 +1512,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     if (!newPostContent.trim()) return;
 
     try {
-      const response = await fetch("http://localhost:5000/api/social/posts", {
+      const response = await apiClient.fetch("/social/posts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1379,8 +1578,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
     setRemovingFollower(followerId);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/users/${followerId}/remove-follower`,
+      const response = await apiClient.fetch(
+        `/social/users/${followerId}/remove-follower`,
         {
           method: "POST",
           headers: {
@@ -1413,8 +1612,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
     setUnfollowingUser(userId);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/users/${userId}/unfollow`,
+      const response = await apiClient.fetch(
+        `/social/users/${userId}/unfollow`,
         {
           method: "POST",
           headers: {
@@ -1446,8 +1645,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
     setBlockingUser(userId);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/users/${userId}/block`,
+      const response = await apiClient.fetch(
+        `/social/users/${userId}/block`,
         {
           method: "POST",
           headers: {
@@ -1568,8 +1767,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
     try {
       const method = isCurrentlyFollowing ? "DELETE" : "POST";
-      const response = await fetch(
-        `http://localhost:5000/api/social/users/${targetUserId}/follow`,
+      const response = await apiClient.fetch(
+        `/social/users/${targetUserId}/follow`,
         {
           method,
           headers: {
@@ -1603,1182 +1802,293 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
     }
   };
 
+  const profileData = viewingOtherUser ? otherUser : user;
+  // isViewingSelfProfile is defined previously.
+
   return (
     <>
       <ToastContainer toasts={toasts} onClose={removeToast} />
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-slate-900 dark:via-purple-900/20 dark:to-blue-900/30 transition-colors duration-300">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          {/* Profile Header Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/95 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700/50 p-8 mb-8 relative overflow-hidden transition-colors duration-300"
-          >
-            {/* Background Pattern */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-purple-900/30 dark:to-blue-900/20 opacity-50"></div>
+      <div className="min-h-screen bg-background">
 
-            {/* Action Buttons - Top Right Corner */}
-            <div
-              className="absolute top-6 right-6 flex gap-3 z-10"
-              style={{ position: "absolute", zIndex: 1000 }}
-            >
-              {!viewingOtherUser || isViewingSelfProfile ? (
-                <>
-                  {/* Settings Button */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                  >
-                    <Button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (window.location.pathname.includes("/dashboard")) {
-                          window.dispatchEvent(new CustomEvent("showSettings"));
-                        } else {
-                          navigate("/settings");
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          if (window.location.pathname.includes("/dashboard")) {
-                            window.dispatchEvent(
-                              new CustomEvent("showSettings")
-                            );
-                          } else {
-                            navigate("/settings");
-                          }
-                        }
-                      }}
-                      variant="outline"
-                      className="group relative overflow-hidden border-gray-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium text-gray-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer shadow-sm hover:shadow-md focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
-                      size="sm"
-                      aria-label="Open settings"
-                      title="Open settings"
-                      type="button"
-                      style={{ cursor: "pointer", userSelect: "none" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/10 group-hover:to-purple-500/10 transition-all duration-300"></div>
-                      <Settings className="h-5 w-5 mr-2 group-hover:rotate-90 transition-transform duration-300" />
-                      <span className="relative z-10">Settings</span>
-                    </Button>
-                  </motion.div>
-
-                  {/* Edit Profile Button */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.2 }}
-                  >
-                    <Button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setShowEditProfile(true);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setShowEditProfile(true);
-                        }
-                      }}
-                      className="group relative overflow-hidden bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-500 dark:to-purple-500 hover:from-blue-700 hover:to-purple-700 dark:hover:from-blue-600 dark:hover:to-purple-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium cursor-pointer transform hover:scale-105 active:scale-95 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none"
-                      size="sm"
-                      aria-label="Edit profile"
-                      title="Edit profile"
-                      type="button"
-                      style={{ cursor: "pointer", userSelect: "none" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/0 group-hover:from-white/10 group-hover:to-white/20 transition-all duration-300"></div>
-                      <Edit className="h-5 w-5 mr-2 group-hover:rotate-12 transition-transform duration-300" />
-                      <span className="relative z-10">Edit Profile</span>
-                    </Button>
-                  </motion.div>
-
-                  {/* Profile Menu Button */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.3 }}
-                    className="relative profile-menu"
-                    ref={profileMenuRef}
-                    style={{ position: "relative", zIndex: 1000 }}
-                  >
-                    <Button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setShowProfileMenu(!showProfileMenu);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setShowProfileMenu(!showProfileMenu);
-                        } else if (e.key === "Escape") {
-                          setShowProfileMenu(false);
-                        }
-                      }}
-                      variant="outline"
-                      className={`group relative overflow-hidden border-gray-300 dark:border-slate-600 hover:border-gray-400 dark:hover:border-slate-500 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-all duration-300 px-3 py-2 h-10 flex items-center justify-center text-gray-700 dark:text-slate-200 hover:text-gray-900 dark:hover:text-white cursor-pointer shadow-sm hover:shadow-md focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none ${
-                        showProfileMenu
-                          ? "ring-2 ring-blue-500 ring-offset-2"
-                          : ""
-                      }`}
-                      size="sm"
-                      aria-label="Profile menu"
-                      title="Profile menu"
-                      aria-expanded={showProfileMenu}
-                      aria-haspopup="true"
-                      id="profile-menu-button"
-                      type="button"
-                      style={{ cursor: "pointer", userSelect: "none" }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-gray-500/0 to-gray-500/0 group-hover:from-gray-500/5 group-hover:to-gray-500/10 transition-all duration-300"></div>
-                      <MoreVertical
-                        className={`h-5 w-5 transition-all duration-300 ${
-                          showProfileMenu
-                            ? "rotate-90 scale-110"
-                            : "group-hover:scale-110"
-                        }`}
-                      />
-                    </Button>
-
-                    {/* Enhanced Profile Menu Dropdown */}
-                    <AnimatePresence>
-                      {showProfileMenu && (
-                        <>
-                          {/* Backdrop to prevent click-through */}
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[9998]"
-                            onClick={() => setShowProfileMenu(false)}
-                          />
-
-                          <motion.div
-                            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="absolute right-0 top-full mt-3 w-56 bg-white dark:bg-slate-800/95 border border-gray-200 dark:border-slate-600/50 rounded-xl shadow-2xl z-[9999] backdrop-blur-md overflow-hidden"
-                            role="menu"
-                            aria-orientation="vertical"
-                            aria-labelledby="profile-menu-button"
-                            style={{
-                              position: "absolute",
-                              top: "100%",
-                              right: "0",
-                              marginTop: "12px",
-                              zIndex: 9999,
-                            }}
-                          >
-                            {/* Menu Header */}
-                            <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-600/50 bg-gradient-to-r from-gray-50 to-blue-50 dark:from-slate-700/50 dark:to-blue-900/20">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                                Profile Actions
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Manage your profile and account
-                              </p>
-                            </div>
-
-                            <div className="py-2">
-                              {/* Edit Profile Option */}
-                              <motion.button
-                                whileHover={{ x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => {
-                                  setShowProfileMenu(false);
-                                  setShowEditProfile(true);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setShowProfileMenu(false);
-                                    setShowEditProfile(true);
-                                  }
-                                }}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-900/20 flex items-center gap-3 cursor-pointer transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-                                role="menuitem"
-                                tabIndex={0}
-                              >
-                                <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 transition-colors duration-200">
-                                  <Edit className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">
-                                    Edit Profile
-                                  </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    Update your information
-                                  </div>
-                                </div>
-                              </motion.button>
-
-                              {/* Settings Option */}
-                              <motion.button
-                                whileHover={{ x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => {
-                                  setShowProfileMenu(false);
-                                  if (
-                                    window.location.pathname.includes(
-                                      "/dashboard"
-                                    )
-                                  ) {
-                                    window.dispatchEvent(
-                                      new CustomEvent("showSettings")
-                                    );
-                                  } else {
-                                    navigate("/settings");
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setShowProfileMenu(false);
-                                    if (
-                                      window.location.pathname.includes(
-                                        "/dashboard"
-                                      )
-                                    ) {
-                                      window.dispatchEvent(
-                                        new CustomEvent("showSettings")
-                                      );
-                                    } else {
-                                      navigate("/settings");
-                                    }
-                                  }
-                                }}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-900/20 flex items-center gap-3 cursor-pointer transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset"
-                                role="menuitem"
-                                tabIndex={0}
-                              >
-                                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30 group-hover:bg-purple-200 dark:group-hover:bg-purple-800/40 transition-colors duration-200">
-                                  <Settings className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">Settings</div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    Manage preferences
-                                  </div>
-                                </div>
-                              </motion.button>
-
-                              {/* Achievements Option */}
-                              <motion.button
-                                whileHover={{ x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => {
-                                  setShowProfileMenu(false);
-                                  navigate("/follow-requests");
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setShowProfileMenu(false);
-                                    navigate("/follow-requests");
-                                  }
-                                }}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 flex items-center gap-3 cursor-pointer transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-inset"
-                                role="menuitem"
-                                tabIndex={0}
-                              >
-                                <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-800/40 transition-colors duration-200">
-                                  <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">Follow Requests</div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    Review pending requests
-                                  </div>
-                                </div>
-                              </motion.button>
-
-                              {/* Achievements Option */}
-                              <motion.button
-                                whileHover={{ x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => {
-                                  setShowProfileMenu(false);
-                                  setShowAchievementsDialog(true);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setShowProfileMenu(false);
-                                    setShowAchievementsDialog(true);
-                                  }
-                                }}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-slate-200 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 flex items-center gap-3 cursor-pointer transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-inset"
-                                role="menuitem"
-                                tabIndex={0}
-                              >
-                                <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 group-hover:bg-yellow-200 dark:group-hover:bg-yellow-800/40 transition-colors duration-200">
-                                  <Trophy className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">
-                                    View Achievements
-                                  </div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                                    See your progress
-                                  </div>
-                                </div>
-                              </motion.button>
-
-                              {/* Separator */}
-                              <div className="border-t border-gray-200 dark:border-slate-600 my-2 mx-4"></div>
-
-                              {/* Logout Option */}
-                              <motion.button
-                                whileHover={{ x: 4 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={async () => {
-                                  setShowProfileMenu(false);
-                                  try {
-                                    await logout();
-                                    success(
-                                      "Logged out successfully",
-                                      "You have been logged out."
-                                    );
-                                    window.location.href = "/";
-                                  } catch (err: any) {
-                                    console.error(
-                                      "Error during profile logout:",
-                                      err
-                                    );
-                                    error("Logout failed", "Please try again.");
-                                  }
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    // Trigger logout
-                                    setShowProfileMenu(false);
-                                    // Note: We can't call async function directly in onKeyDown
-                                    // So we'll just close the menu and let the user click
-                                  }
-                                }}
-                                className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 cursor-pointer transition-all duration-200 group focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-inset"
-                                role="menuitem"
-                                tabIndex={0}
-                              >
-                                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 group-hover:bg-red-200 dark:group-hover:bg-red-800/40 transition-colors duration-200">
-                                  <LogOut className="h-4 w-4 text-red-600 dark:text-red-400" />
-                                </div>
-                                <div>
-                                  <div className="font-medium">Logout</div>
-                                  <div className="text-xs text-red-500 dark:text-red-400">
-                                    Sign out of your account
-                                  </div>
-                                </div>
-                              </motion.button>
-                            </div>
-                          </motion.div>
-                        </>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                </>
-              ) : (
-                <>
-                  {/* Message Button for Other Users */}
-                  {canMessage && (
-                    <motion.div
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: 0.1 }}
-                    >
-                      <Button
-                        onClick={handleMessageUser}
-                        variant="outline"
-                        className="group relative overflow-hidden border-gray-300 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium text-gray-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer shadow-sm hover:shadow-md"
-                        size="sm"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 to-purple-500/0 group-hover:from-blue-500/10 group-hover:to-purple-500/10 transition-all duration-300"></div>
-                        <MessageCircle className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300" />
-                        <span className="relative z-10">Message</span>
-                      </Button>
-                    </motion.div>
-                  )}
-
-                  {/* Follow Button for Other Users */}
-                  <motion.div
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3, delay: 0.2 }}
-                  >
-                    {!followStatusLoaded ? (
-                      <FollowButtonSkeleton />
+        {/* Profile Header Block */}
+        <div className="w-full relative z-10 border-b border-border/40 bg-card/40 backdrop-blur-md">
+          {/* Cover Art Region */}
+          <div className="h-40 md:h-56 w-full relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-tr from-blue-700 via-blue-500 to-cyan-400"></div>
+            {/* Mesh overlay */}
+            <div className="absolute inset-0 opacity-30 mix-blend-overlay shadow-[inset_0_0_100px_rgba(0,0,0,0.5)]" style={{backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.7) 1px, transparent 0)', backgroundSize: '32px 32px'}}></div>
+            {/* Bottom Gradient Fade */}
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent"></div>
+          </div>
+          
+          {/* Identity & Actions Bar */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="relative flex flex-col sm:flex-row sm:items-end justify-between pb-6 -mt-16 md:-mt-20 z-20">
+               {/* Left: Avatar + Title combo */}
+               <div className="flex flex-col sm:flex-row items-start sm:items-end gap-5">
+                 <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-[1.5rem] border-[4px] border-background bg-card shadow-2xl flex-shrink-0 group-hover:shadow-blue-500/20 transition-all">
+                    {profileData?.profilePicture ? (
+                      <img src={profileData.profilePicture} alt="Avatar" className="w-full h-full object-cover rounded-[1.25rem]" />
                     ) : (
-                      <Button
-                        onClick={handleFollow}
-                        disabled={
-                          followLoading ||
-                          (!canFollow && !isFollowing && !followRequestSent)
-                        }
-                        className={`group relative overflow-hidden transition-all duration-300 px-4 py-2 h-10 flex items-center justify-center text-sm font-medium cursor-pointer shadow-sm hover:shadow-md transform hover:scale-105 active:scale-95 ${
-                          isFollowing
-                            ? "bg-gray-600 hover:bg-gray-700 text-white"
-                            : followRequestSent
-                            ? "bg-yellow-600 hover:bg-yellow-700 text-white"
-                            : "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
-                        }`}
-                        size="sm"
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/0 group-hover:from-white/10 group-hover:to-white/20 transition-all duration-300"></div>
-                        {followLoading ? (
-                          <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                        ) : isFollowing ? (
-                          <UserMinus className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300" />
-                        ) : followRequestSent ? (
-                          <Clock className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300" />
-                        ) : (
-                          <UserPlus className="h-5 w-5 mr-2 group-hover:scale-110 transition-transform duration-300" />
-                        )}
-                        <span className="relative z-10">
-                          {followLoading
-                            ? "Loading..."
-                            : isFollowing
-                            ? "Unfollow"
-                            : followRequestSent
-                            ? "Requested"
-                            : "Follow"}
-                        </span>
-                      </Button>
+                      <div className="w-full h-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center rounded-[1.25rem]">
+                        <span className="text-5xl font-black text-white">{profileData?.name?.charAt(0) || "U"}</span>
+                      </div>
                     )}
-                  </motion.div>
-                </>
-              )}
-            </div>
-
-            {/* Privacy Notice */}
-            {viewingOtherUser && !canViewProfile && (
-              <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/30 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-600/50 rounded-lg relative z-10">
-                <div className="flex items-center">
-                  <UserCheck className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mr-2" />
-                  <div>
-                    <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-100">
-                      Private Account
-                    </h3>
-                    <p className="text-sm text-yellow-700 dark:text-yellow-200">
-                      This account is private.{" "}
-                      {followRequestSent
-                        ? "Your follow request has been sent. You'll be able to view their profile once they accept."
-                        : "Send a follow request to view their profile and posts."}
+                    {/* Status indicator */}
+                    <div className="absolute bottom-2 right-2 w-5 h-5 bg-green-500 border-4 border-background rounded-full"></div>
+                 </div>
+                 
+                 <div className="pt-3 sm:pt-0 pb-2">
+                    <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight flex items-center gap-2">
+                       {profileData?.name || "Loading..."}
+                       <div className="p-1 rounded-full bg-blue-500/10 text-blue-500"><CheckCircle className="w-4 h-4" /></div>
+                    </h1>
+                    <p className="text-sm md:text-base font-semibold text-muted-foreground mt-1 flex items-center gap-2">
+                       <Briefcase className="w-4 h-4 opacity-70" />
+                       {profileData?.profile?.position || "PrepMate Learner"}
+                       {profileData?.profile?.company ? ` @ ${profileData.profile.company}` : ""}
                     </p>
-                  </div>
-                </div>
-              </div>
-            )}
+                 </div>
+               </div>
 
-            <div className="relative z-10">
-              <div className="flex flex-col lg:flex-row gap-8">
-                {/* Profile Image Section */}
-                <div className="flex flex-col items-center lg:items-start space-y-4">
-                  <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    className="relative group"
-                  >
-                    <div className="w-32 h-32 rounded-full overflow-hidden ring-4 ring-white dark:ring-slate-800 shadow-2xl transition-all duration-300 group-hover:ring-8 group-hover:ring-blue-200 dark:group-hover:ring-purple-400 relative">
-                      <img
-                        src={
-                          displayUser?.profilePicture || "/default-avatar.png"
-                        }
-                        alt={displayUser?.name}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                      />
-                      {/* Online Status Indicator */}
-                      <div className="absolute bottom-2 right-2 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-800"></div>
-                    </div>
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/20 to-purple-500/20 dark:from-purple-400/40 dark:to-blue-400/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    {uploadingImage && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
-                        <Loader2 className="h-6 w-6 text-white animate-spin" />
-                      </div>
-                    )}
-                  </motion.div>
-                </div>
-
-                {/* Profile Info Section */}
-                <div className="flex-1 space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">
-                          {displayUser?.name || "Loading..."}
-                        </h1>
-
-                        {/* Role Badge */}
-                        <Badge
-                          className={`${
-                            displayUser?.role === "admin"
-                              ? "bg-red-100 text-red-800 border-red-200"
-                              : displayUser?.role === "teacher"
-                              ? "bg-purple-100 text-purple-800 border-purple-200"
-                              : displayUser?.role === "hr"
-                              ? "bg-green-100 text-green-800 border-green-200"
-                              : "bg-blue-100 text-blue-800 border-blue-200"
-                          }`}
-                        >
-                          {displayUser?.role
-                            ? displayUser.role.toUpperCase()
-                            : "STUDENT"}
-                        </Badge>
-
-                        {/* Subscription Badge */}
-                        {displayUser?.subscription &&
-                          displayUser.subscription !== "free" && (
-                            <Badge className="bg-orange-100 text-orange-800 border-orange-200">
-                              {displayUser.subscription.toUpperCase()}
-                            </Badge>
-                          )}
-
-                        {/* Verified Badge */}
-                        {displayUser?.profile?.verified && (
-                          <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Verified
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-lg text-gray-600 dark:text-gray-400 font-mono">
-                        @{displayUser?.username || "username"}
-                      </p>
-                      {displayUser?.profile?.location && (
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <MapPin className="h-4 w-4" />
-                          <span>{displayUser.profile.location}</span>
-                        </div>
-                      )}
-                      {displayUser?.profile?.bio && (
-                        <p className="text-gray-700 dark:text-gray-300 max-w-2xl leading-relaxed">
-                          {displayUser.profile.bio}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Stats Row */}
-                  {canViewProfile && (
-                    <div className="grid grid-cols-3 gap-4 py-4">
-                      <div
-                        className="text-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:shadow-md dark:hover:shadow-slate-900/50"
-                        onClick={handleFollowersDialogOpen}
-                      >
-                        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                          {followers?.length || 0}
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-slate-300">
-                          Followers
-                        </div>
-                      </div>
-                      <div
-                        className="text-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:shadow-md dark:hover:shadow-slate-900/50"
-                        onClick={handleFollowingDialogOpen}
-                      >
-                        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                          {following?.length || 0}
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-slate-300">
-                          Following
-                        </div>
-                      </div>
-                      <div className="text-center p-3 rounded-xl bg-white/50 dark:bg-slate-800/50 border border-gray-200 dark:border-slate-700/50">
-                        <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                          {userPosts?.length || 0}
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-slate-300">
-                          Posts
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Social Links */}
-                  {canViewProfile && displayUser?.profile?.socialLinks && (
-                    <div className="flex gap-3 pt-2">
-                      {displayUser.profile.socialLinks.linkedin && (
-                        <a
-                          href={displayUser.profile.socialLinks.linkedin}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                        >
-                          <Linkedin className="h-4 w-4 text-blue-600" />
-                        </a>
-                      )}
-                      {displayUser.profile.socialLinks.github && (
-                        <a
-                          href={displayUser.profile.socialLinks.github}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                        >
-                          <Github className="h-4 w-4 text-gray-600" />
-                        </a>
-                      )}
-                      {displayUser.profile.socialLinks.portfolio && (
-                        <a
-                          href={displayUser.profile.socialLinks.portfolio}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                        >
-                          <Globe className="h-4 w-4 text-purple-600" />
-                        </a>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+               {/* Right: Actions */}
+               <div className="mt-6 sm:mt-0 flex flex-wrap items-center gap-3">
+                 {!viewingOtherUser || isViewingSelfProfile ? (
+                   <>
+                     <Button variant="outline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowEditProfile(true); }} className="font-bold rounded-xl shadow-sm border-border hover:bg-accent/50 text-xs md:text-sm h-9 md:h-10 px-4 transition-all">
+                       <Edit className="w-4 h-4 mr-2" /> Edit Profile
+                     </Button>
+                     <Button variant="outline" onClick={(e) => { e.preventDefault(); navigate("/settings"); }} className="font-bold rounded-xl shadow-sm border-border hover:bg-accent/50 text-xs md:text-sm h-9 md:h-10 px-4 transition-all hidden sm:flex">
+                       <Settings className="w-4 h-4 mr-2" /> Settings
+                     </Button>
+                   </>
+                 ) : (
+                   <>
+                     <Button onClick={handleFollow} disabled={followLoading} className={`font-bold rounded-xl shadow-sm text-xs md:text-sm h-9 md:h-10 px-6 transition-all ${isFollowing ? 'bg-accent text-foreground border border-border hover:bg-red-50 hover:text-red-600 hover:border-red-200' : followRequestSent ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/25'}`}>
+                       {followLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : isFollowing ? <UserMinus className="w-4 h-4 mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}
+                       {followLoading ? "Loading..." : isFollowing ? "Following" : followRequestSent ? "Request Sent" : "Follow"}
+                     </Button>
+                     <Button variant="outline" onClick={() => setCanMessage(true)} className="font-bold rounded-xl shadow-sm border-border hover:bg-accent/50 text-xs md:text-sm h-9 md:h-10 px-4 transition-all">
+                       <MessageSquare className="w-4 h-4 mr-2" /> Message
+                     </Button>
+                   </>
+                 )}
+               </div>
             </div>
-          </motion.div>
+          </div>
+        </div>
 
-          {/* Dashboard Statistics Section */}
-          {canViewProfile && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-white/95 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700/50 p-6 mb-8 transition-colors duration-300"
-            >
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                  icon={<Zap className="h-6 w-6 text-yellow-600" />}
-                  label="Problems Solved"
-                  value={userStats.problemsSolved}
-                  color="yellow"
-                />
-                <StatCard
-                  icon={<Mic className="h-6 w-6 text-blue-600" />}
-                  label="Mock Interviews"
-                  value={userStats.mockInterviews}
-                  color="blue"
-                />
-                <StatCard
-                  icon={<Flame className="h-6 w-6 text-orange-600" />}
-                  label="Current Streak"
-                  value={userStats.currentStreak}
-                  color="orange"
-                />
-                <div
-                  className="flex flex-col items-center justify-center space-y-2 cursor-pointer hover:scale-105 transition-transform duration-200"
-                  onClick={() => {
-                    setShowAchievementsDialog(true);
-                  }}
-                >
-                  <div className="flex gap-1">
-                    <Medal className="h-4 w-4 text-yellow-600" />
-                    <Target className="h-4 w-4 text-blue-600" />
-                    <BarChart3 className="h-4 w-4 text-green-600" />
-                    <Flame className="h-4 w-4 text-orange-600" />
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {userStats.achievements}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Achievements
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Content Section */}
+        {/* Enhanced Content Grid */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 mb-32 grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-20">
+          
           {canViewProfile ? (
-            <div className="space-y-8">
-              {/* New Post Creation Section */}
-              {isOwnProfile && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <PostCreator
-                    onPostCreated={(post) => {
-                      setUserPosts((prev) => [post, ...prev]);
-                      success("Post created!", "Your post has been published.");
-                    }}
-                    placeholder={`What's on your mind, ${displayUser?.name}?`}
-                  />
-                </motion.div>
-              )}
-
-              {/* Content Tabs */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-white/95 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700/50 transition-colors duration-300"
-              >
-                <Tabs
-                  value={activeTab}
-                  onValueChange={setActiveTab}
-                  className="w-full"
-                >
-                  <div className="border-b border-gray-200 dark:border-slate-700">
-                    <div className="flex space-x-8 px-6">
-                      <button
-                        onClick={() => setActiveTab("posts")}
-                        className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors duration-200 ${
-                          activeTab === "posts"
-                            ? "border-purple-500 text-purple-600 dark:text-purple-400"
-                            : "border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
-                        }`}
-                      >
-                        Posts
-                      </button>
-                      <button
-                        onClick={() => setActiveTab("activity")}
-                        className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors duration-200 ${
-                          activeTab === "activity"
-                            ? "border-purple-500 text-purple-600 dark:text-purple-400"
-                            : "border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
-                        }`}
-                      >
-                        Activity
-                      </button>
-                      <button
-                        onClick={() => setActiveTab("saved")}
-                        className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors duration-200 ${
-                          activeTab === "saved"
-                            ? "border-purple-500 text-purple-600 dark:text-purple-400"
-                            : "border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
-                        }`}
-                      >
-                        Saved
-                      </button>
+            <>
+              {/* LEFT SIDEBAR: Unified Identity & Metrics */}
+              <div className="lg:col-span-4 flex flex-col gap-6">
+                
+                {/* About & Basic Info Card */}
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-card border border-border/60 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                  <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-4">About</h3>
+                  <div className="text-sm text-foreground/90 font-medium leading-relaxed mb-6">
+                    {profileData?.profile?.bio ? (
+                        <p>{profileData.profile.bio}</p>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-4 bg-muted/30 rounded-xl border border-dashed border-border/50 text-center">
+                            <User className="w-6 h-6 text-muted-foreground/50 mb-2" />
+                            <p className="text-xs text-muted-foreground">No biography provided yet.</p>
+                        </div>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-4 pt-4 border-t border-border/40">
+                    {profileData?.profile?.location && (
+                      <div className="flex items-center gap-3 text-sm text-foreground/80 font-medium group cursor-default">
+                        <MapPin className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" />
+                        {profileData.profile.location}
+                      </div>
+                    )}
+                    {profileData?.profile?.socialLinks?.portfolio && (
+                      <div className="flex items-center gap-3 text-sm font-medium">
+                        <Link className="w-4 h-4 text-blue-500" />
+                        <a href={profileData.profile.socialLinks.portfolio} target="_blank" rel="noreferrer" className="text-blue-500 hover:text-blue-600 hover:underline truncate">
+                          {profileData.profile.socialLinks.portfolio.replace(/^https?:\/\//, '')}
+                        </a>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 text-sm text-foreground/80 font-medium group">
+                      <Calendar className="w-4 h-4 text-blue-500 group-hover:scale-110 transition-transform" />
+                      Joined {profileData?.createdAt ? new Date(profileData.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : "Recently"}
                     </div>
                   </div>
+                </motion.div>
 
-                  <div className="p-6">
-                    {activeTab === "posts" && (
-                      <div className="space-y-4">
-                        {/* View Toggle */}
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                            Posts
-                          </h3>
-                          <div className="flex items-center gap-2 bg-gray-100 dark:bg-slate-700 rounded-lg p-1">
-                            <button
-                              onClick={() => setViewMode("grid")}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                                viewMode === "grid"
-                                  ? "bg-white dark:bg-slate-600 text-gray-900 dark:text-white shadow-sm"
-                                  : "text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"
-                              }`}
-                            >
-                              <Grid3X3 className="h-4 w-4" />
-                              Grid
-                            </button>
-                            <button
-                              onClick={() => setViewMode("list")}
-                              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                                viewMode === "list"
-                                  ? "bg-white dark:bg-slate-600 text-gray-900 dark:text-white shadow-sm"
-                                  : "text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"
-                              }`}
-                            >
-                              <List className="h-4 w-4" />
-                              List
-                            </button>
-                          </div>
+                {/* Unified Network & Performance Stats */}
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="bg-card border border-border/60 rounded-2xl p-6 shadow-sm">
+                   <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground mb-6">Platform Metrics</h3>
+                   
+                   <div className="grid grid-cols-2 gap-4 mb-6">
+                     <button onClick={() => canViewFollowers && handleFollowersDialogOpen()} className={`flex flex-col items-center justify-center p-4 rounded-xl border border-border/40 bg-accent/20 ${canViewFollowers ? 'hover:bg-accent hover:border-blue-500/30 transition-all cursor-pointer' : 'opacity-70 cursor-not-allowed'}`}>
+                       <span className="text-2xl font-black text-foreground">{followers.length}</span>
+                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Followers</span>
+                     </button>
+                     <button onClick={() => canViewFollowing && handleFollowingDialogOpen()} className={`flex flex-col items-center justify-center p-4 rounded-xl border border-border/40 bg-accent/20 ${canViewFollowing ? 'hover:bg-accent hover:border-blue-500/30 transition-all cursor-pointer' : 'opacity-70 cursor-not-allowed'}`}>
+                       <span className="text-2xl font-black text-foreground">{following.length}</span>
+                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Following</span>
+                     </button>
+                   </div>
+
+                   <div className="space-y-5 pt-4 border-t border-border/40">
+                     <div className="group">
+                        <div className="flex justify-between items-center mb-2">
+                           <span className="flex items-center text-xs font-bold text-muted-foreground uppercase tracking-wider group-hover:text-amber-500 transition-colors"><Flame className="w-3.5 h-3.5 mr-1" /> Karma Points</span>
+                           <span className="text-sm font-black text-foreground">{profileData?.reputation || 0}</span>
                         </div>
-
-                        {loadingPosts ? (
-                          <div className="text-center py-12">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 dark:border-purple-400 mx-auto mb-4"></div>
-                            <p className="text-gray-600 dark:text-gray-400">
-                              Loading posts...
-                            </p>
-                          </div>
-                        ) : userPosts.length === 0 ? (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="text-center py-12"
-                          >
-                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                              <MessageCircle className="h-8 w-8 text-gray-400 dark:text-gray-500" />
-                            </div>
-                            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                              No posts yet
-                            </h3>
-                            <motion.p
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ delay: 0.2 }}
-                              className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto"
-                            >
-                              {isOwnProfile
-                                ? "Start sharing your thoughts and experiences!"
-                                : "This user hasn't posted anything yet."}
-                            </motion.p>
-                            {isOwnProfile && (
-                              <Button
-                                onClick={() => setShowNewPostDialog(true)}
-                                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-                              >
-                                <Plus className="h-4 w-4 mr-2" /> Create your
-                                first post
-                              </Button>
-                            )}
-                          </motion.div>
-                        ) : (
-                          <div
-                            className={
-                              viewMode === "grid"
-                                ? "grid grid-cols-1 md:grid-cols-2 gap-6"
-                                : "space-y-4"
-                            }
-                          >
-                            {userPosts &&
-                              Array.isArray(userPosts) &&
-                              userPosts.map((post, index) => {
-                                // Ensure post is an object and has required properties
-                                if (!post || typeof post !== "object") {
-                                  return null;
-                                }
-
-                                return (
-                                  <motion.div
-                                    key={post._id || `post-${index}`}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{
-                                      duration: 0.5,
-                                      delay: 0.1 * index,
-                                    }}
-                                    whileHover={{ y: -5, scale: 1.02 }}
-                                    className="group"
-                                  >
-                                    <Card
-                                      className={`border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white/95 to-gray-50/95 dark:from-slate-800/95 dark:to-slate-700/95 backdrop-blur-sm group-hover:scale-105 group-hover:-translate-y-1 ${
-                                        viewMode === "list" ? "max-w-none" : ""
-                                      }`}
-                                    >
-                                      <CardContent
-                                        className={`${
-                                          viewMode === "list" ? "p-4" : "p-6"
-                                        }`}
-                                      >
-                                        <div
-                                          className={`flex items-start gap-4 ${
-                                            viewMode === "list"
-                                              ? "flex-row"
-                                              : "flex-col"
-                                          }`}
-                                        >
-                                          <Avatar
-                                            className={`${
-                                              viewMode === "list"
-                                                ? "h-10 w-10"
-                                                : "h-12 w-12"
-                                            } flex-shrink-0 ring-2 ring-blue-100 dark:ring-blue-900`}
-                                          >
-                                            <AvatarImage
-                                              src={displayUser?.profilePicture}
-                                            />
-                                            <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                                              {displayUser?.name?.charAt(0)}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                          <div
-                                            className={`flex-1 space-y-4 ${
-                                              viewMode === "list"
-                                                ? "min-w-0"
-                                                : ""
-                                            }`}
-                                          >
-                                            <div
-                                              className={`flex items-center justify-between ${
-                                                viewMode === "list"
-                                                  ? "flex-wrap gap-2"
-                                                  : ""
-                                              }`}
-                                            >
-                                              <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-gray-900 dark:text-white truncate">
-                                                  {safeRender(
-                                                    post.user?.name ||
-                                                      displayUser?.name,
-                                                    "Unknown User"
-                                                  )}
-                                                </span>
-                                                <Badge
-                                                  variant="outline"
-                                                  className={`text-xs ${
-                                                    post.type === "achievement"
-                                                      ? "border-green-200 text-green-700 dark:border-green-700 dark:text-green-300"
-                                                      : post.type === "question"
-                                                      ? "border-orange-200 text-orange-700 dark:border-orange-700 dark:text-orange-300"
-                                                      : post.type === "resource"
-                                                      ? "border-purple-200 text-purple-700 dark:border-purple-700 dark:text-purple-300"
-                                                      : "border-blue-200 text-blue-700 dark:border-blue-700 dark:text-blue-300"
-                                                  }`}
-                                                >
-                                                  {post.type || "post"}
-                                                </Badge>
-                                              </div>
-                                              <span className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">
-                                                {post.createdAt
-                                                  ? new Date(
-                                                      post.createdAt
-                                                    ).toLocaleDateString()
-                                                  : "Unknown date"}
-                                              </span>
-                                            </div>
-
-                                            <div className="relative">
-                                              <p
-                                                className={`text-gray-700 dark:text-slate-200 leading-relaxed break-words ${
-                                                  viewMode === "list"
-                                                    ? "line-clamp-2 text-sm"
-                                                    : "line-clamp-3"
-                                                }`}
-                                                style={{
-                                                  wordBreak: "break-word",
-                                                  overflowWrap: "break-word",
-                                                }}
-                                              >
-                                                {safeRender(
-                                                  post.content,
-                                                  "No content"
-                                                )}
-                                              </p>
-                                              {post.image && (
-                                                <div
-                                                  className={`mt-3 rounded-lg overflow-hidden ${
-                                                    viewMode === "list"
-                                                      ? "max-w-xs"
-                                                      : ""
-                                                  }`}
-                                                >
-                                                  <img
-                                                    src={post.image}
-                                                    alt="Post attachment"
-                                                    className={`object-cover hover:scale-105 transition-transform duration-300 ${
-                                                      viewMode === "list"
-                                                        ? "w-32 h-20"
-                                                        : "w-full h-32"
-                                                    }`}
-                                                  />
-                                                </div>
-                                              )}
-                                            </div>
-
-                                            <div
-                                              className={`flex items-center justify-between pt-3 border-t border-gray-100 dark:border-slate-700 ${
-                                                viewMode === "list"
-                                                  ? "flex-wrap gap-2"
-                                                  : ""
-                                              }`}
-                                            >
-                                              <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-slate-400">
-                                                <button
-                                                  onClick={() =>
-                                                    handleLike(post._id)
-                                                  }
-                                                  className="flex items-center gap-1 hover:text-red-500 transition-all duration-200 hover:scale-110"
-                                                >
-                                                  <Heart
-                                                    className={`h-4 w-4 ${
-                                                      post.isLiked
-                                                        ? "fill-red-500 text-red-500"
-                                                        : ""
-                                                    }`}
-                                                  />
-                                                  <span className="text-xs">
-                                                    {safeRender(
-                                                      Array.isArray(post.likes)
-                                                        ? post.likes.length
-                                                        : post.likes,
-                                                      "0"
-                                                    )}
-                                                  </span>
-                                                </button>
-                                                <button className="flex items-center gap-1 hover:text-blue-500 transition-all duration-200 hover:scale-110">
-                                                  <MessageSquare className="h-4 w-4" />
-                                                  <span className="text-xs">
-                                                    {safeRender(
-                                                      Array.isArray(
-                                                        post.comments
-                                                      )
-                                                        ? post.comments.length
-                                                        : post.comments,
-                                                      "0"
-                                                    )}
-                                                  </span>
-                                                </button>
-                                                <button
-                                                  onClick={() =>
-                                                    handleSave(post._id)
-                                                  }
-                                                  className="flex items-center gap-1 hover:text-yellow-500 transition-all duration-200 hover:scale-110"
-                                                >
-                                                  <Bookmark
-                                                    className={`h-4 w-4 ${
-                                                      post.isSaved
-                                                        ? "fill-yellow-500 text-yellow-500"
-                                                        : ""
-                                                    }`}
-                                                  />
-                                                </button>
-                                                <button className="flex items-center gap-1 hover:text-green-500 transition-all duration-200 hover:scale-110">
-                                                  <Share2 className="h-4 w-4" />
-                                                </button>
-                                              </div>
-
-                                              {/* Show delete button only for user's own posts */}
-                                              {post.user?._id === user?.id && (
-                                                <button
-                                                  onClick={() =>
-                                                    handleDeletePost(post._id)
-                                                  }
-                                                  className="flex items-center gap-1 hover:text-red-500 transition-all duration-200 hover:scale-110 p-1 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
-                                                  title="Delete post"
-                                                >
-                                                  <Trash2 className="h-4 w-4" />
-                                                </button>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </motion.div>
-                                );
-                              })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {activeTab === "activity" && (
-                      <div className="text-center py-12">
-                        <ActivityIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                          Activity Feed
-                        </h3>
-                        <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                          Track your recent activities, achievements, and
-                          progress here.
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-blue-50 to-blue-100">
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
-                                  <Trophy className="h-5 w-5 text-white" />
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">
-                                    Achievement Unlocked
-                                  </h4>
-                                  <p className="text-sm text-gray-600">
-                                    Solved 100 problems
-                                  </p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                          <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-green-50 to-green-100">
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
-                                  <Target className="h-5 w-5 text-white" />
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">
-                                    Mock Interview
-                                  </h4>
-                                  <p className="text-sm text-gray-600">
-                                    Completed interview #25
-                                  </p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                          <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-purple-50 to-purple-100">
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-purple-500 flex items-center justify-center">
-                                  <Flame className="h-5 w-5 text-white" />
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">
-                                    Streak Extended
-                                  </h4>
-                                  <p className="text-sm text-gray-600">
-                                    42 days and counting!
-                                  </p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
+                        <div className="w-full bg-accent/50 rounded-full h-1.5 overflow-hidden">
+                           <div className="bg-gradient-to-r from-amber-400 to-orange-500 h-1.5 rounded-full shadow-[0_0_8px_rgba(245,158,11,0.5)]" style={{ width: `${Math.min(((profileData?.reputation||0)/1000)*100, 100)}%` }}></div>
                         </div>
-                      </div>
-                    )}
+                     </div>
+                     <div className="group">
+                        <div className="flex justify-between items-center mb-2">
+                           <span className="flex items-center text-xs font-bold text-muted-foreground uppercase tracking-wider group-hover:text-blue-500 transition-colors"><Code className="w-3.5 h-3.5 mr-1" /> Core Solves</span>
+                           <span className="text-sm font-black text-foreground">{profileData?.solves || 0}</span>
+                        </div>
+                        <div className="w-full bg-accent/50 rounded-full h-1.5 overflow-hidden">
+                           <div className="bg-gradient-to-r from-blue-500 to-cyan-400 h-1.5 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" style={{ width: `${Math.min(((profileData?.solves||0)/500)*100, 100)}%` }}></div>
+                        </div>
+                     </div>
+                   </div>
+                </motion.div>
+                
+              </div>
 
-                    {activeTab === "saved" && (
-                      <div className="text-center py-12">
-                        <BookmarkIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                          Saved Items
-                        </h3>
-                        <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                          Your bookmarked posts, resources, and important
-                          content will appear here.
+              {/* RIGHT SIDEBAR: Feed Stream */}
+              <div className="lg:col-span-8 flex flex-col gap-6">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-background via-background to-social-50/30 shadow-[0_24px_48px_-34px_rgba(15,23,42,0.75)]"
+                >
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-social-500 via-navy-500 to-coding-500" />
+                  <div className="relative space-y-4 p-5 md:p-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-xl font-bold text-foreground">Profile Feed</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Share updates, wins, projects, and snippets with your network.
                         </p>
-                        <Button
-                          onClick={() => setActiveTab("posts")}
-                          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                        >
-                          <BookOpen className="h-4 w-4 mr-2" />
-                          Browse Posts
-                        </Button>
+                      </div>
+                      <div className="inline-flex items-center rounded-full border border-social-200 bg-social-50 px-3 py-1 text-xs font-semibold text-social-700">
+                        {userPosts.length} posts
+                      </div>
+                    </div>
+
+                    {(!viewingOtherUser || isViewingSelfProfile) ? (
+                      <PostCreator
+                        onPostCreated={handleProfilePostCreated}
+                        className="max-w-none border-border/70 bg-background/90 shadow-none"
+                        placeholder="Share something valuable... (idea, project, code, or learning)"
+                      />
+                    ) : (
+                      <div className="rounded-2xl border border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                        You are viewing {displayUser?.name}&apos;s profile. Follow or message to stay connected.
                       </div>
                     )}
                   </div>
-                </Tabs>
-              </motion.div>
-            </div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-200 p-12 text-center"
-            >
-              <UserCheck className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-2xl font-semibold text-gray-900 mb-2">
-                Private Profile
-              </h3>
-              <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                This profile is private. Send a follow request to view their
-                content.
-              </p>
-              <Button
-                onClick={handleFollow}
-                disabled={followLoading}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-              >
-                {followLoading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <UserPlus className="h-4 w-4 mr-2" />
-                )}
-                {followLoading ? "Loading..." : "Send Follow Request"}
-              </Button>
-            </motion.div>
-          )}
+                </motion.div>
 
-          <Dialog
-            open={showFollowersDialog}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-1">
+                    <h4 className="text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                      Activity Stream
+                    </h4>
+                  </div>
+
+                  {loadingPosts ? (
+                    <div className="space-y-5">
+                      {[1, 2, 3].map((index) => (
+                        <Card
+                          key={`profile-post-skeleton-${index}`}
+                          className="mx-auto w-full max-w-2xl rounded-3xl border border-border/60"
+                        >
+                          <CardContent className="space-y-4 p-5 md:p-6">
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="h-10 w-10 rounded-full" />
+                              <div className="flex-1 space-y-2">
+                                <Skeleton className="h-4 w-32" />
+                                <Skeleton className="h-3 w-24" />
+                              </div>
+                            </div>
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-5/6" />
+                            <div className="flex gap-2 pt-2">
+                              <Skeleton className="h-8 w-16 rounded-lg" />
+                              <Skeleton className="h-8 w-16 rounded-lg" />
+                              <Skeleton className="h-8 w-16 rounded-lg" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : userPosts.length === 0 ? (
+                    <div className="rounded-3xl border border-border/60 bg-card px-8 py-14 text-center shadow-sm">
+                      <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/50">
+                        <MessageCircle className="h-8 w-8 text-muted-foreground/60" />
+                      </div>
+                      <h3 className="mb-2 text-xl font-bold text-foreground">
+                        No posts yet. Start sharing your knowledge 🚀
+                      </h3>
+                      <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+                        Share ideas, projects, code snippets, and interview learnings with the PrepMate community.
+                      </p>
+                    </div>
+                  ) : (
+                    userPosts.map((post: any, index: number) => (
+                      <motion.div
+                        key={post?._id || post?.id || `profile-post-${index}`}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.22, delay: index * 0.03 }}
+                        className="flex justify-center"
+                      >
+                        <PostCard
+                          post={mapProfilePostForCard(post)}
+                          onLike={handleProfileLikeSync}
+                          onComment={handleProfileCommentSync}
+                          onShare={handleProfileShareSync}
+                          onBookmark={handleProfileBookmarkSync}
+                          onDelete={handleDeletePost}
+                          onViewProfile={navigateToProfile}
+                        />
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+             <div className="col-span-1 lg:col-span-12">
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-card/50 backdrop-blur-xl rounded-[2rem] shadow-sm border border-border/60 p-10 md:p-14 text-center max-w-xl mx-auto mt-8 md:mt-12">
+                <div className="w-20 h-20 bg-accent rounded-full flex items-center justify-center mx-auto mb-6 border border-border shadow-sm">
+                   <Lock className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-2xl font-black text-foreground mb-3">
+                  This profile is private
+                </h3>
+                <p className="text-muted-foreground text-sm mb-8 font-medium">
+                  {profileData?.name} has secured their presence. Send a follow request to view their insights, analytics, and achievements.
+                </p>
+                <Button onClick={handleFollow} disabled={followLoading} className="font-bold px-8 py-6 rounded-xl text-sm shadow-md transition-all active:scale-95">
+                  {followLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <UserPlus className="h-4 w-4 mr-2" />}
+                  {followLoading ? "Processing Request..." : "Request Access"}
+                </Button>
+              </motion.div>
+             </div>
+          )}
+          
+        </div>
+      </div>
+
+          <Dialog open={showFollowersDialog}
             onOpenChange={setShowFollowersDialog}
           >
             <DialogContent
@@ -3854,9 +3164,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
               </ScrollArea>
             </DialogContent>
           </Dialog>
-        </div>
-      </div>
-
       {/* Delete Confirmation Dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="sm:max-w-md">

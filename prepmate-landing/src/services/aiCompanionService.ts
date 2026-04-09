@@ -1,3 +1,4 @@
+import { apiClient } from "../lib/apiClient";
 interface VoiceModel {
   id: string;
   name: string;
@@ -20,8 +21,6 @@ interface AICompanionSettings {
   lastApiKeyValidation?: string;
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
 class AICompanionService {
   private getAuthHeaders(): HeadersInit {
     const token = localStorage.getItem('token');
@@ -33,7 +32,7 @@ class AICompanionService {
 
   async getVoiceModels(): Promise<VoiceModel[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/voice-models`, {
+      const response = await apiClient.fetch(`/users/ai-companion/voice-models`, {
         headers: this.getAuthHeaders(),
       });
 
@@ -52,7 +51,7 @@ class AICompanionService {
 
   async getSettings(): Promise<AICompanionSettings> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/settings`, {
+      const response = await apiClient.fetch(`/users/ai-companion/settings`, {
         headers: this.getAuthHeaders(),
       });
 
@@ -71,7 +70,7 @@ class AICompanionService {
 
   async setApiKey(apiKey: string): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/api-key`, {
+      const response = await apiClient.fetch(`/users/ai-companion/api-key`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ apiKey }),
@@ -90,7 +89,7 @@ class AICompanionService {
 
   async updateVoiceModel(voiceModelId: string): Promise<VoiceModel> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/voice-model`, {
+      const response = await apiClient.fetch(`/users/ai-companion/voice-model`, {
         method: 'PUT',
         headers: this.getAuthHeaders(),
         body: JSON.stringify({ voiceModelId }),
@@ -111,7 +110,7 @@ class AICompanionService {
 
   async updateVoicePreferences(preferences: Partial<VoicePreferences>): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/voice-preferences`, {
+      const response = await apiClient.fetch(`/users/ai-companion/voice-preferences`, {
         method: 'PUT',
         headers: this.getAuthHeaders(),
         body: JSON.stringify(preferences),
@@ -130,7 +129,7 @@ class AICompanionService {
 
   async validateApiKey(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/validate-api-key`, {
+      const response = await apiClient.fetch(`/users/ai-companion/validate-api-key`, {
         method: 'POST',
         headers: this.getAuthHeaders(),
       });
@@ -150,7 +149,7 @@ class AICompanionService {
 
   async removeApiKey(): Promise<void> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users/ai-companion/api-key`, {
+      const response = await apiClient.fetch(`/users/ai-companion/api-key`, {
         method: 'DELETE',
         headers: this.getAuthHeaders(),
       });

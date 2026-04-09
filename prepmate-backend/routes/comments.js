@@ -1,10 +1,13 @@
 const express = require("express");
 const router = express.Router();
+const mongoose = require("mongoose");
 const Comment = require("../models/Comment");
 const Post = require("../models/Post");
 const User = require("../models/User");
 const { authenticateToken } = require("../middleware/auth");
 const logger = require("../utils/logger");
+
+const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
 // @desc    Get comments for a post
 // @route   GET /api/comments/post/:postId
@@ -13,6 +16,13 @@ router.get("/post/:postId", async (req, res) => {
   try {
     const { postId } = req.params;
     const { page = 1, limit = 20, sort = "newest" } = req.query;
+
+    if (!isValidObjectId(postId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post ID",
+      });
+    }
 
     const skip = (page - 1) * limit;
     const sortOptions =
@@ -77,6 +87,13 @@ router.post("/post/:postId", authenticateToken, async (req, res) => {
     const { content } = req.body;
     const userId = req.user.id;
 
+    if (!isValidObjectId(postId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid post ID",
+      });
+    }
+
     if (!content || !content.trim()) {
       return res.status(400).json({
         success: false,
@@ -137,6 +154,13 @@ router.post("/:commentId/like", authenticateToken, async (req, res) => {
     const { commentId } = req.params;
     const userId = req.user.id;
 
+    if (!isValidObjectId(commentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comment ID",
+      });
+    }
+
     const comment = await Comment.findById(commentId);
     if (!comment) {
       return res.status(404).json({
@@ -181,6 +205,13 @@ router.post("/:commentId/reply", authenticateToken, async (req, res) => {
     const { commentId } = req.params;
     const { content } = req.body;
     const userId = req.user.id;
+
+    if (!isValidObjectId(commentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comment ID",
+      });
+    }
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -233,6 +264,13 @@ router.put("/:commentId", authenticateToken, async (req, res) => {
     const { commentId } = req.params;
     const { content } = req.body;
     const userId = req.user.id;
+
+    if (!isValidObjectId(commentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comment ID",
+      });
+    }
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -291,6 +329,13 @@ router.delete("/:commentId", authenticateToken, async (req, res) => {
     const { commentId } = req.params;
     const userId = req.user.id;
 
+    if (!isValidObjectId(commentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid comment ID",
+      });
+    }
+
     const comment = await Comment.findById(commentId);
     if (!comment) {
       return res.status(404).json({
@@ -334,6 +379,13 @@ router.get("/user/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
     const { page = 1, limit = 20 } = req.query;
+
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
 
     const skip = (page - 1) * limit;
 

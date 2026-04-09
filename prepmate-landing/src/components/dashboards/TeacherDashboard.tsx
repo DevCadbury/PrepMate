@@ -15,6 +15,7 @@ import {
   CalendarIcon,
   BellIcon,
 } from "@heroicons/react/24/outline";
+import { apiClient } from "../../lib/apiClient";
 
 interface Test {
   id: string;
@@ -58,8 +59,8 @@ const TeacherDashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem("authToken");
-      const response = await fetch(
-        "http://localhost:5000/api/teacher/dashboard",
+      const response = await apiClient.fetch(
+        "/teacher/dashboard",
         {
           headers: {
             Authorization: `Bearer ${token}`,

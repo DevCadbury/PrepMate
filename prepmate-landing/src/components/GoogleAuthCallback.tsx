@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import OnboardingForm from "./OnboardingForm";
 import { motion } from "framer-motion";
 import { Loader2, AlertCircle } from "lucide-react";
+import { apiClient } from "../lib/apiClient";
 
 const GoogleAuthCallback: React.FC = () => {
   const navigate = useNavigate();
@@ -50,8 +51,8 @@ const GoogleAuthCallback: React.FC = () => {
           console.log("Profile incomplete, fetching Google data...");
           if (googleDataId) {
             try {
-              const response = await fetch(
-                `http://localhost:5000/api/auth/google-data/${googleDataId}`,
+              const response = await apiClient.fetch(
+                `/auth/google-data/${googleDataId}`,
                 {
                   method: "GET",
                   headers: {
@@ -85,8 +86,8 @@ const GoogleAuthCallback: React.FC = () => {
 
   const handleOnboardingComplete = async (onboardingData: any) => {
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/complete-google-profile",
+      const response = await apiClient.fetch(
+        "/auth/complete-google-profile",
         {
           method: "POST",
           headers: {

@@ -254,6 +254,34 @@ const userSchema = new mongoose.Schema(
     pendingFollowRequests: [
       { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     ],
+    followRequestActions: [
+      {
+        requester: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        actionBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        action: {
+          type: String,
+          enum: ["accepted", "rejected", "blocked"],
+          required: true,
+        },
+        source: {
+          type: String,
+          enum: ["single", "bulk"],
+          default: "single",
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
 
     // Blocked users
     blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],

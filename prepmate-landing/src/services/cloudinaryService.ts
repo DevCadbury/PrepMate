@@ -1,3 +1,4 @@
+import { apiClient } from "../lib/apiClient";
 interface CloudinaryResponse {
   secure_url: string;
   public_id: string;
@@ -44,7 +45,7 @@ class CloudinaryService {
     formData.append("upload_preset", this.uploadPreset);
 
     try {
-      const response = await fetch(
+      const response = await apiClient.fetch(
         `https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`,
         {
           method: "POST",
@@ -84,7 +85,7 @@ class CloudinaryService {
     formData.append("transformation", "w_400,h_400,c_fill,g_face");
 
     try {
-      const response = await fetch(
+      const response = await apiClient.fetch(
         `https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`,
         {
           method: "POST",
@@ -115,7 +116,7 @@ class CloudinaryService {
     }
 
     try {
-      const response = await fetch(
+      const response = await apiClient.fetch(
         `https://api.cloudinary.com/v1_1/${this.cloudName}/image/destroy`,
         {
           method: "POST",

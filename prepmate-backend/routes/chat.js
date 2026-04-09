@@ -780,7 +780,7 @@ router.post(
     try {
       const { messageId } = req.params;
       const { reason } = req.body;
-      const userId = req.user.id;
+      const actorId = req.user.id;
 
       if (!isValidObjectId(messageId)) {
         return res.status(400).json({
@@ -800,7 +800,7 @@ router.post(
       // Add report to admin logs
       messageDoc.adminLogs.push({
         action: "reported",
-        userId,
+        actorId,
         reason,
         timestamp: new Date(),
       });

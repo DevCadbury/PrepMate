@@ -416,17 +416,17 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
 
   if (showApiKeyInput) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-background p-4">
         <div className="w-full max-w-md">
-          <Card className="bg-gray-800 border-gray-700 shadow-2xl">
+          <Card className="card-interactive bg-card shadow-lg border border-border">
             <CardHeader className="text-center pb-6">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center shadow-xl">
-                <Key className="w-8 h-8 text-white" />
+              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-amber-100 flex items-center justify-center shadow-sm">
+                <Key className="w-8 h-8 text-amber-600" />
               </div>
-              <h1 className="text-3xl font-bold text-yellow-400 mb-2">
+              <h1 className="text-3xl font-bold text-foreground mb-2">
                 API Key Required
               </h1>
-              <p className="text-gray-400">
+              <p className="text-muted-foreground">
                 Please set your Gemini API key to continue
               </p>
             </CardHeader>
@@ -436,7 +436,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                 <div>
                   <label
                     htmlFor="apiKey"
-                    className="block text-sm font-medium text-gray-300 mb-2"
+                    className="block text-sm font-medium text-muted-foreground mb-2"
                   >
                     Google Gemini API Key
                   </label>
@@ -449,19 +449,19 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                       setApiKeyError("");
                     }}
                     required
-                    className="w-full bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-cyan-500 focus:ring-cyan-500"
+                    className="w-full bg-background border-border text-foreground placeholder-muted-foreground focus:ring-ai-500"
                     placeholder="Enter your API key"
                   />
                   {apiKeyError && (
-                    <p className="text-red-400 text-xs mt-1">{apiKeyError}</p>
+                    <p className="text-destructive text-xs mt-1">{apiKeyError}</p>
                   )}
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Get your API key from{" "}
                     <a
                       href="https://aistudio.google.com/app/apikey"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-cyan-400 hover:underline"
+                      className="text-ai-600 hover:underline"
                     >
                       Google AI Studio
                     </a>
@@ -471,7 +471,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                 <Button
                   type="submit"
                   disabled={!apiKey || isValidatingKey}
-                  className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed transform hover:scale-105"
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transform hover:scale-105"
                 >
                   {isValidatingKey ? "Validating..." : "Save API Key"}
                 </Button>
@@ -484,23 +484,23 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-4">
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-background p-4">
       <div className="w-full max-w-lg">
-        <Card className="bg-gray-800 border-gray-700 shadow-2xl">
+        <Card className="card-interactive bg-card shadow-lg border border-border">
           <CardHeader className="text-center pb-6">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-xl">
-              <div className="text-3xl font-bold text-white">AI</div>
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-ai-50 dark:bg-ai-900/30 flex items-center justify-center shadow-sm">
+              <div className="text-3xl font-bold text-ai-600 dark:text-ai-400">AI</div>
             </div>
-            <h1 className="text-3xl font-bold text-cyan-400 mb-2">
+            <h1 className="text-3xl font-bold text-foreground mb-2">
               Welcome to PrepMate
             </h1>
-            <p className="text-gray-400">
+            <p className="text-muted-foreground">
               {user?.name ? `Welcome back, ${user.name}!` : "Let's get your personalized AI interview ready."}
             </p>
             
             {settings?.hasApiKey && settings?.isApiKeyValid && (
               <div className="mt-4">
-                <Badge className="bg-green-600 text-white">
+                <Badge variant="success">
                   <Key className="w-3 h-3 mr-1" />
                   API Key Configured
                 </Badge>
@@ -513,7 +513,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
               <div>
                 <label
                   htmlFor="name"
-                  className="block text-sm font-medium text-gray-300 mb-2 flex items-center"
+                  className="block text-sm font-medium text-foreground mb-2 flex items-center"
                 >
                   <User className="w-4 h-4 mr-2" />
                   What is your name?
@@ -526,11 +526,11 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                     setName(e.target.value)
                   }
                   required
-                  className="w-full bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-cyan-500 focus:ring-cyan-500"
+                  className="w-full bg-background border-border text-foreground placeholder-muted-foreground focus:ring-ai-500"
                   placeholder="e.g., Priya Sharma"
                 />
                 {user?.name && (
-                  <p className="text-xs text-cyan-400 mt-1">
+                  <p className="text-xs text-ai-600 mt-1">
                     Auto-detected from your profile
                   </p>
                 )}
@@ -539,7 +539,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
               <div>
                 <label
                   htmlFor="role"
-                  className="block text-sm font-medium text-gray-300 mb-2 flex items-center"
+                  className="block text-sm font-medium text-foreground mb-2 flex items-center"
                 >
                   <Briefcase className="w-4 h-4 mr-2" />
                   What role are you interviewing for?
@@ -552,7 +552,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                     setRole(e.target.value)
                   }
                   required
-                  className="w-full bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-cyan-500 focus:ring-cyan-500"
+                  className="w-full bg-background border-border text-foreground placeholder-muted-foreground focus:ring-ai-500"
                   placeholder="e.g., Senior Frontend Engineer"
                 />
               </div>
@@ -560,7 +560,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
               <div>
                 <label
                   htmlFor="voiceModel"
-                  className="block text-sm font-medium text-gray-300 mb-2 flex items-center"
+                  className="block text-sm font-medium text-foreground mb-2 flex items-center"
                 >
                   <Volume2 className="w-4 h-4 mr-2" />
                   Select AI Voice
@@ -572,8 +572,8 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                       key={voice.id}
                       className={`p-3 rounded-lg border cursor-pointer transition-all ${
                         selectedVoiceModel === voice.id
-                          ? "bg-cyan-600/20 border-cyan-500"
-                          : "bg-gray-700 border-gray-600 hover:border-gray-500"
+                          ? "bg-ai-50 dark:bg-ai-900/20 border-ai-500"
+                          : "bg-background border-border hover:border-muted-foreground"
                       }`}
                       onClick={() => handleVoiceModelChange(voice.id)}
                     >
@@ -582,13 +582,13 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                           <div
                             className={`w-4 h-4 rounded-full border-2 ${
                               selectedVoiceModel === voice.id
-                                ? "bg-cyan-500 border-cyan-500"
-                                : "border-gray-400"
+                                ? "bg-ai-500 border-ai-500"
+                                : "border-muted-foreground"
                             }`}
                           />
                           <div>
-                            <div className="text-white font-medium">{voice.name}</div>
-                            <div className="text-xs text-gray-400">
+                            <div className="text-foreground font-medium">{voice.name}</div>
+                            <div className="text-xs text-muted-foreground">
                               {voice.country} • {voice.gender} • {voice.lang}
                             </div>
                           </div>
@@ -602,7 +602,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                             e.stopPropagation();
                             testVoice(voice);
                           }}
-                          className="text-cyan-400 hover:text-cyan-300 hover:bg-cyan-600/20"
+                          className="text-ai-600 hover:text-ai-700 hover:bg-ai-100 dark:hover:bg-ai-900/30"
                           disabled={isPlayingVoice === voice.id}
                         >
                           {isPlayingVoice === voice.id ? (
@@ -633,7 +633,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                     type="button"
                     variant="ghost"
                     onClick={() => setShowApiKeyInput(true)}
-                    className="text-gray-400 hover:text-white flex items-center"
+                    className="text-muted-foreground hover:text-foreground flex items-center"
                   >
                     <Settings className="w-4 h-4 mr-2" />
                     Change API Key
@@ -643,7 +643,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                     type="button"
                     variant="ghost"
                     onClick={() => setShowSystemCheck(true)}
-                    className="text-gray-400 hover:text-white flex items-center"
+                    className="text-muted-foreground hover:text-foreground flex items-center"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
                     System Check
@@ -653,7 +653,7 @@ const SetupScreen: React.FC<SetupScreenProps> = ({ onStart }) => {
                 <Button
                   type="submit"
                   disabled={!name || !role || !settings?.hasApiKey || !settings?.isApiKeyValid || isSubmitting}
-                  className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed transform hover:scale-105"
+                  className="bg-ai-600 hover:bg-ai-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transform hover:scale-105"
                 >
                   {isSubmitting ? "Initializing..." : "Start Interview"}
                 </Button>

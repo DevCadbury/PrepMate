@@ -6,6 +6,7 @@ import React, {
   ReactNode,
   useCallback,
 } from "react";
+import { apiClient } from "../lib/apiClient";
 
 // Types
 interface User {
@@ -209,10 +210,6 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 // Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// API base URL
-const API_BASE_URL =
-  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
-
 // Auth provider component
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   children,
@@ -229,7 +226,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       if (token) {
         try {
           console.log("Validating token with API...");
-          const response = await fetch(`${API_BASE_URL}/auth/me`, {
+          const response = await apiClient.fetch(`/auth/me`, {
             headers: {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
@@ -272,7 +269,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     dispatch({ type: "AUTH_START" });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await apiClient.fetch(`/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -304,7 +301,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     dispatch({ type: "AUTH_START" });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      const response = await apiClient.fetch(`/auth/me`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -336,7 +333,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     dispatch({ type: "AUTH_START" });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      const response = await apiClient.fetch(`/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -375,7 +372,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       // Call logout endpoint to revoke token
       if (state.token) {
         console.log("Calling logout API to revoke token...");
-        const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+        const response = await apiClient.fetch(`/auth/logout`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${state.token}`,
@@ -417,7 +414,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+      const response = await apiClient.fetch(`/auth/profile`, {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${state.token}`,
@@ -443,8 +440,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/social/users/${userId}/follow`,
+      const response = await apiClient.fetch(
+        `/social/users/${userId}/follow`,
         {
           method: "POST",
           headers: {
@@ -478,8 +475,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/social/users/${userId}/unfollow`,
+      const response = await apiClient.fetch(
+        `/social/users/${userId}/unfollow`,
         {
           method: "POST",
           headers: {
@@ -515,8 +512,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/social/users/${userId}/block`,
+      const response = await apiClient.fetch(
+        `/social/users/${userId}/block`,
         {
           method: "POST",
           headers: {
@@ -550,8 +547,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/social/users/${userId}/unblock`,
+      const response = await apiClient.fetch(
+        `/social/users/${userId}/unblock`,
         {
           method: "POST",
           headers: {
@@ -592,7 +589,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      const response = await apiClient.fetch(`/auth/refresh`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${state.token}`,

@@ -21,8 +21,10 @@ const usersRoutes = require("./routes/users");
 const notificationsRoutes = require("./routes/notifications");
 const commentsRoutes = require("./routes/comments");
 const chatRoutes = require("./routes/chat");
+const supportRoutes = require("./routes/support");
 const healthRoutes = require("./routes/health");
 const aiRoutes = require("./routes/ai");
+const codingRoutes = require("./routes/coding");
 
 // Import utilities
 const logger = require("./utils/logger");
@@ -143,7 +145,9 @@ app.use("/api/notifications", notificationsRoutes);
 app.use("/api/social/notifications", notificationsRoutes);
 app.use("/api/comments", commentsRoutes);
 app.use("/api/chat", chatRoutes);
+app.use("/api/support", supportRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/coding", codingRoutes);
 
 // Health check routes
 app.use("/health", healthRoutes);

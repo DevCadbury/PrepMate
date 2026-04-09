@@ -181,6 +181,44 @@ const postSchema = new mongoose.Schema(
       },
     ],
     comments: [commentSchema],
+    reports: [
+      {
+        reporter: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        reason: {
+          type: String,
+          trim: true,
+          maxlength: 500,
+          default: "",
+        },
+        status: {
+          type: String,
+          enum: ["pending", "reviewed", "dismissed"],
+          default: "pending",
+          index: true,
+        },
+        reviewedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reviewedAt: {
+          type: Date,
+        },
+        resolutionNote: {
+          type: String,
+          trim: true,
+          maxlength: 500,
+          default: "",
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     shares: [
       {
         user: {
@@ -300,6 +338,7 @@ postSchema.index({ tags: 1 });
 postSchema.index({ hashtags: 1 });
 postSchema.index({ category: 1 });
 postSchema.index({ "likes.user": 1 });
+postSchema.index({ "reports.status": 1, createdAt: -1 });
 postSchema.index({ "comments.user": 1 });
 postSchema.index({ "shares.user": 1 });
 postSchema.index({ "bookmarks.user": 1 });

@@ -24,6 +24,7 @@ import {
   ShoppingCartIcon,
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
+import { apiClient } from "../../lib/apiClient";
 
 interface User {
   id: string;
@@ -75,8 +76,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        "http://localhost:5000/api/admin/dashboard",
+      const response = await apiClient.fetch(
+        "/admin/dashboard",
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -119,8 +120,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     setActionLoading(userId);
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}/${action}`,
+      const response = await apiClient.fetch(
+        `/admin/users/${userId}/${action}`,
         {
           method: "POST",
           headers: {
@@ -147,8 +148,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     setActionLoading(userId);
     try {
       const token = localStorage.getItem("adminToken");
-      const response = await fetch(
-        `http://localhost:5000/api/admin/users/${userId}/role`,
+      const response = await apiClient.fetch(
+        `/admin/users/${userId}/role`,
         {
           method: "PUT",
           headers: {

@@ -3,6 +3,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Environment } from "@react-three/drei";
 import { InterviewState } from "../../types/interview";
 import * as THREE from "three";
+import { apiClient } from "../../lib/apiClient";
 
 interface WebGLAvatarProps {
   interviewState: InterviewState;
@@ -557,7 +558,7 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlayin
         setIsLoading(true);
         setError(null);
         setUseFallback(false);
-        const response = await fetch(AVATAR_URL, { method: "HEAD" });
+        const response = await apiClient.fetch(AVATAR_URL, { method: "HEAD" });
         if (!response.ok) {
           throw new Error(`Failed to load model: ${response.status}`);
         }
@@ -602,16 +603,16 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlayin
   }
 
   return (
-    <div className="w-full h-full bg-black rounded-xl overflow-hidden relative shadow-2xl">
+    <div className="w-full h-full bg-black rounded-lg overflow-hidden relative shadow-md">
       {/* Video Call Frame */}
-      <div className="absolute inset-0 border-2 border-gray-600 rounded-xl pointer-events-none z-10"></div>
+      <div className="absolute inset-0 border border-border rounded-lg pointer-events-none z-10"></div>
       {/* Video Call Status Bar */}
-      <div className="absolute top-0 left-0 right-0 bg-black bg-opacity-80 text-white px-4 py-2 z-20 backdrop-blur-sm">
+      <div className="absolute top-0 left-0 right-0 bg-background/80 text-foreground px-4 py-2 z-20 backdrop-blur-sm border-b border-border">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></div>
             <span className="text-sm font-medium">Live Interview</span>
-            <span className="text-xs text-gray-300">• Face-to-Face</span>
+            <span className="text-xs text-muted-foreground">• Face-to-Face</span>
           </div>
           <div className="flex items-center space-x-2">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -665,7 +666,7 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlayin
         <Environment preset="studio" />
       </Canvas>
       {/* Status Indicator */}
-      <div className="absolute bottom-4 left-4 bg-black bg-opacity-80 text-white px-4 py-2 rounded-lg backdrop-blur-sm border border-gray-600">
+      <div className="absolute bottom-4 left-4 bg-background/80 text-foreground px-4 py-2 rounded-md backdrop-blur-md border border-border shadow-sm">
         <div className="flex items-center space-x-3">
           <div
             className={`w-3 h-3 rounded-full ${
@@ -687,13 +688,13 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlayin
               {interviewState === InterviewState.STARTING && "Starting..."}
               {interviewState === InterviewState.ENDED && "Ended"}
             </span>
-            <div className="text-xs text-gray-300">HR Interviewer</div>
+            <div className="text-xs text-muted-foreground">HR Interviewer</div>
           </div>
         </div>
       </div>
       {/* Controls */}
       <div className="absolute bottom-4 right-4 flex space-x-2">
-        <button className="bg-black bg-opacity-60 text-white p-2 rounded-full hover:bg-opacity-80 transition-all border border-gray-600">
+        <button className="bg-background/80 text-foreground p-2 rounded-full hover:bg-muted transition-all border border-border">
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path
               fillRule="evenodd"
@@ -702,7 +703,7 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlayin
             />
           </svg>
         </button>
-        <button className="bg-black bg-opacity-60 text-white p-2 rounded-full hover:bg-opacity-80 transition-all border border-gray-600">
+        <button className="bg-background/80 text-foreground p-2 rounded-full hover:bg-muted transition-all border border-border">
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path d="M2 6a2 2 0 012-2h6l2 2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
           </svg>
@@ -710,10 +711,10 @@ const WebGLAvatar: React.FC<WebGLAvatarProps> = ({ interviewState, isAudioPlayin
       </div>
       {/* Overlay Elements */}
       <div className="absolute top-4 right-4 flex space-x-2">
-        <div className="bg-black bg-opacity-60 text-white px-2 py-1 rounded text-xs">
+        <div className="bg-background/60 text-foreground px-2 py-1 rounded text-xs border border-border">
           HD
         </div>
-        <div className="bg-black bg-opacity-60 text-white px-2 py-1 rounded text-xs">
+        <div className="bg-background/60 text-foreground px-2 py-1 rounded text-xs border border-border">
           1080p
         </div>
       </div>

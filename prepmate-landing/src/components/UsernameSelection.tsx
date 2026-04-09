@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "./ui/card";
 import { useAuth } from "../contexts/AuthContext";
+import { apiClient } from "../lib/apiClient";
 
 const UsernameSelection: React.FC = () => {
   const { updateProfile } = useAuth();
@@ -55,8 +56,8 @@ const UsernameSelection: React.FC = () => {
 
     setIsChecking(true);
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/check-username",
+      const response = await apiClient.fetch(
+        "/auth/check-username",
         {
           method: "POST",
           headers: {
@@ -102,8 +103,8 @@ const UsernameSelection: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/set-username",
+      const response = await apiClient.fetch(
+        "/auth/set-username",
         {
           method: "POST",
           headers: {

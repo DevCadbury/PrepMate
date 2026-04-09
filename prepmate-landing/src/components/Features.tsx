@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ComputerDesktopIcon,
   ChartBarIcon,
@@ -14,307 +14,165 @@ const Features: React.FC = () => {
   const features = [
     {
       id: 0,
-      title: "Mock Interview Module",
+      title: "AI Interview Module",
       description:
-        "Practice with AI-powered mock interviews that adapt to your responses. Get real-time feedback on communication, confidence, and technical skills.",
+        "Step into a lifelike mock interview environment. Get instantaneous, actionable feedback to sharpen your delivery.",
       icon: ComputerDesktopIcon,
-      color: "bg-blue-500",
-      mockup: (
-        <div className="bg-gray-900 rounded-lg p-4 h-64 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex space-x-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            </div>
-            <div className="text-white text-sm">AI Interview Session</div>
-          </div>
-          <div className="flex-1 bg-gray-800 rounded p-4 mb-4">
-            <div className="text-green-400 text-sm mb-2">
-              AI: "Tell me about a challenging project you worked on."
-            </div>
-            <div className="text-white text-sm mb-4">
-              User: "I developed a full-stack e-commerce platform..."
-            </div>
-            <div className="text-blue-400 text-sm">
-              Feedback: Great structure! Consider adding specific metrics.
-            </div>
-          </div>
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>Confidence: 85%</span>
-            <span>Fluency: 92%</span>
-            <span>Technical: 78%</span>
-          </div>
-        </div>
-      ),
+      image: "/feature_1_blue.png",
+      colorTag: "bg-blue-500",
     },
     {
       id: 1,
-      title: "Roadmap Tracker",
+      title: "Interactive Roadmap",
       description:
-        "Follow personalized learning paths with progress tracking, milestone achievements, and adaptive recommendations based on your performance.",
+        "Visualize your journey. An elegant, glowing nodes-based roadmap designed to adapt directly to your learning speed.",
       icon: ChartBarIcon,
-      color: "bg-green-500",
-      mockup: (
-        <div className="bg-white rounded-lg p-4 h-64 border shadow-lg">
-          <div className="text-gray-900 font-semibold mb-4">
-            DSA Mastery Path
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center">
-              <div className="w-4 h-4 bg-green-500 rounded-full mr-3"></div>
-              <span className="text-sm text-gray-700">Arrays & Strings</span>
-              <span className="ml-auto text-xs text-green-600">✓ Complete</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-4 h-4 bg-green-500 rounded-full mr-3"></div>
-              <span className="text-sm text-gray-700">Linked Lists</span>
-              <span className="ml-auto text-xs text-green-600">✓ Complete</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-4 h-4 bg-blue-500 rounded-full mr-3"></div>
-              <span className="text-sm text-gray-700">Trees & Graphs</span>
-              <span className="ml-auto text-xs text-blue-600">In Progress</span>
-            </div>
-            <div className="flex items-center opacity-50">
-              <div className="w-4 h-4 bg-gray-300 rounded-full mr-3"></div>
-              <span className="text-sm text-gray-500">Dynamic Programming</span>
-            </div>
-          </div>
-          <div className="mt-4 pt-4 border-t">
-            <div className="text-sm text-gray-600 mb-2">Overall Progress</div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full"
-                style={{ width: "65%" }}
-              ></div>
-            </div>
-            <div className="text-xs text-gray-500 mt-1">65% Complete</div>
-          </div>
-        </div>
-      ),
+      image: "/feature_2_blue.png",
+      colorTag: "bg-indigo-500",
     },
     {
       id: 2,
-      title: "Test & Assignments",
+      title: "Coding Mastery",
       description:
-        "Take coding challenges, MCQ tests, and assignments created by teachers or HR professionals. Get instant feedback and detailed analytics.",
+        "Solve problems in a fast, robust editor. Built specifically to mimic top-tier technical assignments.",
       icon: DocumentCheckIcon,
-      color: "bg-purple-500",
-      mockup: (
-        <div className="bg-white rounded-lg p-4 h-64 border shadow-lg">
-          <div className="text-gray-900 font-semibold mb-4">
-            Coding Challenge
-          </div>
-          <div className="bg-gray-50 rounded p-3 mb-3">
-            <div className="text-sm text-gray-700 mb-2">Problem: Two Sum</div>
-            <div className="text-xs text-gray-600">
-              Given an array of integers, return indices of the two numbers that
-              add up to a specific target.
-            </div>
-          </div>
-          <div className="bg-gray-900 rounded p-3 mb-3">
-            <div className="text-green-400 text-xs font-mono">
-              def twoSum(nums, target):
-              <br />
-              &nbsp;&nbsp;hash_map = {}
-              <br />
-              &nbsp;&nbsp;for i, num in enumerate(nums):
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;complement = target - num
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;if complement in hash_map:
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return [hash_map[complement],
-              i]
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;hash_map[num] = i
-            </div>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-green-600">✓ All tests passed</span>
-            <span className="text-blue-600">Runtime: 45ms</span>
-          </div>
-        </div>
-      ),
+      image: "/feature_3_blue.png",
+      colorTag: "bg-cyan-500",
     },
     {
       id: 3,
-      title: "Community & Posts",
+      title: "Community Network",
       description:
-        "Share your learning journey, ask questions, and connect with peers. Build a supportive community of learners and mentors.",
+        "Join a passionate network of like-minded candidates. Discuss patterns, share offers, and find mock partners.",
       icon: UserGroupIcon,
-      color: "bg-orange-500",
-      mockup: (
-        <div className="bg-white rounded-lg p-4 h-64 border shadow-lg">
-          <div className="text-gray-900 font-semibold mb-4">Community Feed</div>
-          <div className="space-y-3">
-            <div className="border-b pb-3">
-              <div className="flex items-center mb-2">
-                <div className="w-8 h-8 bg-blue-500 rounded-full mr-2"></div>
-                <span className="text-sm font-medium text-gray-700">
-                  Sarah K.
-                </span>
-                <span className="text-xs text-gray-500 ml-auto">2h ago</span>
-              </div>
-              <div className="text-sm text-gray-700">
-                Just completed my first AI mock interview! The feedback was
-                incredibly helpful. Anyone else tried it?
-              </div>
-              <div className="flex items-center mt-2 text-xs text-gray-500">
-                <span className="mr-4">👍 12</span>
-                <span className="mr-4">💬 5</span>
-                <span>🔗 Share</span>
-              </div>
-            </div>
-            <div className="border-b pb-3">
-              <div className="flex items-center mb-2">
-                <div className="w-8 h-8 bg-green-500 rounded-full mr-2"></div>
-                <span className="text-sm font-medium text-gray-700">
-                  Alex M.
-                </span>
-                <span className="text-xs text-gray-500 ml-auto">4h ago</span>
-              </div>
-              <div className="text-sm text-gray-700">
-                Looking for study partners for Google interview prep. Anyone
-                interested?
-              </div>
-              <div className="flex items-center mt-2 text-xs text-gray-500">
-                <span className="mr-4">👍 8</span>
-                <span className="mr-4">💬 3</span>
-                <span>🔗 Share</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      ),
+      image: "/feature_4_blue.png",
+      colorTag: "bg-sky-500",
     },
     {
       id: 4,
-      title: "Dashboard Analytics",
+      title: "HR Analytics",
       description:
-        "Track your progress with detailed analytics, performance insights, and personalized recommendations to optimize your learning journey.",
+        "Deep performance metrics built for educators and HR. Predict candidate success with stunning visualization.",
       icon: CogIcon,
-      color: "bg-red-500",
-      mockup: (
-        <div className="bg-white rounded-lg p-4 h-64 border shadow-lg">
-          <div className="text-gray-900 font-semibold mb-4">
-            Performance Dashboard
-          </div>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">156</div>
-              <div className="text-xs text-gray-600">Problems Solved</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">23</div>
-              <div className="text-xs text-gray-600">Mock Interviews</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">85%</div>
-              <div className="text-xs text-gray-600">Success Rate</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">12</div>
-              <div className="text-xs text-gray-600">Day Streak</div>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-600">Weak Areas:</span>
-              <span className="text-red-600">Dynamic Programming</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-600">Strong Areas:</span>
-              <span className="text-green-600">Arrays, Strings</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-600">Next Goal:</span>
-              <span className="text-blue-600">Complete Trees Module</span>
-            </div>
-          </div>
-        </div>
-      ),
+      image: "/feature_5_blue.png",
+      colorTag: "bg-blue-600",
     },
   ];
 
   return (
-    <section id="features" className="py-20 bg-gray-50">
+    <section id="features" className="py-32 bg-background relative border-b border-border">
+      {/* Background Decorators */}
+       <div className="absolute top-0 right-0 w-full h-[500px] bg-gradient-to-b from-blue-50/50 to-transparent dark:from-blue-900/10 pointer-events-none -z-10"></div>
+       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          viewport={{ once: true }}
-          className="text-center mb-16"
+          viewport={{ once: true, margin: "-100px" }}
+          className="text-center mb-24"
         >
-          <h2 className="text-4xl md:text-5xl font-bold font-display text-gray-900 mb-6">
-            Powerful Features for{" "}
-            <span className="gradient-text">Every Learner</span>
+          <div className="inline-flex items-center px-4 py-2 mb-6 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-bold tracking-widest uppercase shadow-sm">
+             The PrepMate Advantage
+          </div>
+          <h2 className="text-4xl md:text-6xl font-bold font-display text-foreground mb-6 tracking-tight">
+            Tools built to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Accelerate</span>
           </h2>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Explore our comprehensive suite of tools designed to accelerate your
-            interview preparation journey.
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+            Every feature is meticulously crafted to ensure you walk into your next interview with absolute clarity and undeniable confidence.
           </p>
         </motion.div>
 
-        {/* Feature Navigation */}
-        <div className="flex flex-wrap justify-center gap-4 mb-12">
-          {features.map((feature, index) => (
-            <button
-              key={feature.id}
-              onClick={() => setActiveFeature(index)}
-              className={`px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
-                activeFeature === index
-                  ? "bg-primary-600 text-white shadow-lg"
-                  : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
-              }`}
-            >
-              {feature.title}
-            </button>
-          ))}
-        </div>
+        {/* Feature Bento Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch h-full">
+          
+          {/* Sidebar Navigation */}
+          <div className="lg:col-span-5 flex flex-col justify-center space-y-4">
+            {features.map((feature, index) => {
+              const isActive = activeFeature === index;
+              return (
+                <motion.button
+                  key={feature.id}
+                  onClick={() => setActiveFeature(index)}
+                  initial={{ opacity: 0, x: -30 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  viewport={{ once: true }}
+                  className={`w-full text-left px-6 py-6 rounded-3xl transition-all duration-300 relative group overflow-hidden ${
+                    isActive
+                      ? "bg-muted/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] ring-1 ring-border border-transparent"
+                      : "bg-transparent border border-transparent hover:bg-muted/50"
+                  }`}
+                >
+                  {/* Glow effect inside active button */}
+                  {isActive && (
+                    <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-blue-500/5 to-transparent pointer-events-none"></div>
+                  )}
+                  
+                  <div className="flex items-start relative z-10">
+                    <div className={`p-4 rounded-2xl mr-5 transition-colors duration-300 ${isActive ? `${feature.colorTag} text-white shadow-lg` : "bg-card text-muted-foreground border border-border group-hover:border-blue-500/30 group-hover:text-blue-500"}`}>
+                      {React.createElement(feature.icon, {
+                        className: "w-6 h-6",
+                      })}
+                    </div>
+                    <div>
+                      <h3 className={`text-xl font-bold mb-2 transition-colors duration-300 ${isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}>
+                        {feature.title}
+                      </h3>
+                      <AnimatePresence>
+                        {isActive && (
+                          <motion.p
+                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                            animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                            className="text-muted-foreground text-sm leading-relaxed overflow-hidden"
+                          >
+                            {feature.description}
+                          </motion.p>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+                </motion.button>
+              )
+            })}
+          </div>
 
-        {/* Feature Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          {/* Content */}
-          <motion.div
-            key={`content-${activeFeature}`}
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-            className="space-y-6"
-          >
-            <div
-              className={`inline-flex p-4 rounded-xl ${features[activeFeature].color} text-white`}
-            >
-              {React.createElement(features[activeFeature].icon, {
-                className: "w-8 h-8",
-              })}
-            </div>
-            <h3 className="text-3xl font-bold text-gray-900">
-              {features[activeFeature].title}
-            </h3>
-            <p className="text-lg text-gray-600 leading-relaxed">
-              {features[activeFeature].description}
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <button className="btn-primary">Try It Now</button>
-              <button className="btn-secondary">Learn More</button>
-            </div>
-          </motion.div>
-
-          {/* Mockup */}
-          <motion.div
-            key={`mockup-${activeFeature}`}
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-            className="flex justify-center"
-          >
-            {features[activeFeature].mockup}
-          </motion.div>
+          {/* Dynamic Image Display with Framer Motion Layout */}
+          <div className="lg:col-span-7 flex justify-center items-center h-full min-h-[500px]">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`mockup-${activeFeature}`}
+                initial={{ opacity: 0, y: 40, scale: 0.95, filter: "blur(10px)" }}
+                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                exit={{ opacity: 0, y: -40, scale: 0.95, filter: "blur(10px)" }}
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                className="relative w-full h-[400px] md:h-[600px] xl:h-[700px] rounded-[3rem] overflow-hidden bg-card border border-border shadow-[0_20px_60px_rgba(37,99,235,0.1)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex items-center justify-center p-2 group"
+              >
+                 {/* Internal Animated Glow */}
+                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-indigo-500/10 pointer-events-none group-hover:opacity-100 opacity-50 transition-opacity duration-500"></div>
+                 
+                 <div className="relative w-full h-full rounded-[2.5rem] overflow-hidden bg-muted/20">
+                   <img 
+                     src={features[activeFeature].image} 
+                     alt={features[activeFeature].title} 
+                     className="w-full h-full object-cover transition-transform duration-[1.5s] group-hover:scale-[1.03]" 
+                   />
+                 </div>
+                 
+                 {/* Floating floating badge based on active feature */}
+                  <motion.div 
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 }}
+                    className="absolute top-8 right-8 bg-background/80 backdrop-blur-xl border border-border px-4 py-2 rounded-xl shadow-lg flex items-center gap-2"
+                  >
+                     <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                     <span className="text-xs font-bold text-foreground">Active Module</span>
+                  </motion.div>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
       </div>
     </section>

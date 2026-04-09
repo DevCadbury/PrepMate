@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { XMarkIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
+import { apiClient } from "../lib/apiClient";
 
 interface SignUpModalProps {
   onClose: () => void;
@@ -110,7 +111,7 @@ const SignUpModal: React.FC<SignUpModalProps> = ({ onClose }) => {
 
   const handleGoogleSignUp = () => {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = "http://localhost:5000/api/auth/google";
+    window.location.href = apiClient.getApiUrl("/auth/google");
   };
 
   return (

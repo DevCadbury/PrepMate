@@ -266,6 +266,14 @@ function App() {
             }
           />
           <Route
+            path="/admin-console"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <StudentDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/ai-companion"
             element={
               <ProtectedRoute>

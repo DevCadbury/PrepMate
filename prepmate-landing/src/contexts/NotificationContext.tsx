@@ -3,10 +3,12 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
+  useRef,
   ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
-import { useToast } from "../components/ui/toast";
+import { apiClient } from "../lib/apiClient";
 
 interface Notification {
   id: string;
@@ -38,6 +40,8 @@ const NotificationContext = createContext<NotificationContextType | undefined>(
   undefined
 );
 
+const NOTIFICATION_MIN_FETCH_MS = 30000;
+
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
@@ -45,15 +49,28 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
-  const { success, error } = useToast();
+  const fetchInFlightRef = useRef(false);
+  const lastFetchAtRef = useRef(0);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async (options?: { force?: boolean }) => {
+    const force = options?.force === true;
+
     if (!user) return;
+
+    if (fetchInFlightRef.current) {
+      return;
+    }
+
+    if (!force && Date.now() - lastFetchAtRef.current < NOTIFICATION_MIN_FETCH_MS) {
+      return;
+    }
+
+    fetchInFlightRef.current = true;
 
     setIsLoading(true);
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/social/notifications",
+      const response = await apiClient.fetch(
+        "/social/notifications",
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -65,18 +82,20 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
         const data = await response.json();
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
+        lastFetchAtRef.current = Date.now();
       }
     } catch (err) {
       console.error("Error fetching notifications:", err);
     } finally {
+      fetchInFlightRef.current = false;
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/notifications/${notificationId}/read`,
+      const response = await apiClient.fetch(
+        `/social/notifications/${notificationId}/read`,
         {
           method: "POST",
           headers: {
@@ -102,8 +121,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
 
   const markAllAsRead = async () => {
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/social/notifications/read-all",
+      const response = await apiClient.fetch(
+        "/social/notifications/read-all",
         {
           method: "POST",
           headers: {
@@ -123,15 +142,30 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
     }
   };
 
-  // Poll for new notifications every 30 seconds
+  // Refresh once on mount and then when window/tab becomes active.
   useEffect(() => {
     if (!user) return;
 
-    fetchNotifications();
+    void fetchNotifications({ force: true });
 
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
+    const handleWindowFocus = () => {
+      void fetchNotifications();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchNotifications();
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user, fetchNotifications]);
 
   const value: NotificationContextType = {
     notifications,

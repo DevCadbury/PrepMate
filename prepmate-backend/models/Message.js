@@ -75,9 +75,21 @@ const messageSchema = new mongoose.Schema(
       {
         action: {
           type: String,
-          enum: ["created", "edited", "deleted", "reported", "blocked"],
+          enum: [
+            "created",
+            "edited",
+            "deleted",
+            "reported",
+            "blocked",
+            "resolved",
+            "dismissed",
+          ],
         },
         adminId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        actorId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "User",
         },

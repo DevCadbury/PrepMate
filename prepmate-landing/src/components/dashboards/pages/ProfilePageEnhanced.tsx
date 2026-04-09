@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { Card, CardContent } from "../../ui/card";
 import { Button } from "../../ui/button";
@@ -54,6 +54,7 @@ import {
   UserX,
 } from "lucide-react";
 import { useToast } from "../../ui/toast";
+import { apiClient } from "../../../lib/apiClient";
 
 interface Post {
   id: string;
@@ -103,6 +104,11 @@ const ProfilePageEnhanced: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("posts");
   const [followLoading, setFollowLoading] = useState(false);
+  const followRequestsInFlightRef = useRef(false);
+
+  const buildAuthHeaders = useCallback(() => ({
+    Authorization: `Bearer ${localStorage.getItem("token")}`,
+  }), []);
 
   useEffect(() => {
     if (currentUser) {
@@ -113,7 +119,7 @@ const ProfilePageEnhanced: React.FC = () => {
   const fetchProfileData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/users/profile`, {
+      const response = await apiClient.fetch(`/users/profile`, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
@@ -136,14 +142,17 @@ const ProfilePageEnhanced: React.FC = () => {
     }
   };
 
-  const fetchFollowRequests = async () => {
+  const fetchFollowRequests = useCallback(async (force = false) => {
+    if (followRequestsInFlightRef.current && !force) {
+      return;
+    }
+
+    followRequestsInFlightRef.current = true;
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/users/follow-requests",
+      const response = await apiClient.fetch(
+        "/users/follow-requests",
         {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          headers: buildAuthHeaders(),
         }
       );
 
@@ -153,16 +162,18 @@ const ProfilePageEnhanced: React.FC = () => {
       }
     } catch (error) {
       console.error("Error fetching follow requests:", error);
+    } finally {
+      followRequestsInFlightRef.current = false;
     }
-  };
+  }, [buildAuthHeaders]);
 
   const handleFollow = async () => {
     if (!profileData) return;
 
     setFollowLoading(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/follow/${profileData.user._id}`,
+      const response = await apiClient.fetch(
+        `/users/follow/${profileData.user._id}`,
         {
           method: "POST",
           headers: {
@@ -199,8 +210,8 @@ const ProfilePageEnhanced: React.FC = () => {
 
   const handleAcceptFollowRequest = async (requesterId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/accept-follow-request/${requesterId}`,
+      const response = await apiClient.fetch(
+        `/users/accept-follow-request/${requesterId}`,
         {
           method: "POST",
           headers: {
@@ -211,7 +222,7 @@ const ProfilePageEnhanced: React.FC = () => {
 
       if (response.ok) {
         success("Follow request accepted!", "The user is now following you.");
-        await fetchFollowRequests();
+        await fetchFollowRequests(true);
         await fetchProfileData();
       }
     } catch (error: any) {
@@ -222,8 +233,8 @@ const ProfilePageEnhanced: React.FC = () => {
 
   const handleRejectFollowRequest = async (requesterId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/reject-follow-request/${requesterId}`,
+      const response = await apiClient.fetch(
+        `/users/reject-follow-request/${requesterId}`,
         {
           method: "POST",
           headers: {
@@ -234,7 +245,7 @@ const ProfilePageEnhanced: React.FC = () => {
 
       if (response.ok) {
         success("Follow request rejected", "The request has been declined.");
-        await fetchFollowRequests();
+        await fetchFollowRequests(true);
         await fetchProfileData();
       }
     } catch (error: any) {
@@ -262,7 +273,7 @@ const ProfilePageEnhanced: React.FC = () => {
 
   const handleSaveProfile = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/profile", {
+      const response = await apiClient.fetch("/profile", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -296,8 +307,8 @@ const ProfilePageEnhanced: React.FC = () => {
 
   const handleLike = async (postId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${postId}/like`,
+      const response = await apiClient.fetch(
+        `/social/posts/${postId}/like`,
         {
           method: "POST",
           headers: {
@@ -331,8 +342,8 @@ const ProfilePageEnhanced: React.FC = () => {
 
   const handleSave = async (postId: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${postId}/save`,
+      const response = await apiClient.fetch(
+        `/social/posts/${postId}/save`,
         {
           method: "POST",
           headers: {
@@ -589,7 +600,7 @@ const ProfilePageEnhanced: React.FC = () => {
                     className="text-center cursor-pointer"
                     onClick={() => {
                       setShowFollowRequestsDialog(true);
-                      fetchFollowRequests();
+                      void fetchFollowRequests(true);
                     }}
                   >
                     <div className="text-2xl font-bold text-gray-900">

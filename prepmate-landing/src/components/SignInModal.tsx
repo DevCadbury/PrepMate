@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { XMarkIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
+import { apiClient } from "../lib/apiClient";
 
 interface SignInModalProps {
   onClose: () => void;
@@ -73,7 +74,7 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
 
   const handleGoogleSignIn = () => {
     // Redirect to backend Google OAuth endpoint
-    window.location.href = "http://localhost:5000/api/auth/google";
+    window.location.href = apiClient.getApiUrl("/auth/google");
   };
 
   const handleForgotPassword = async () => {
@@ -94,7 +95,7 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
 
     setForgotLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/auth/forgot-password", {
+      const response = await apiClient.fetch("/auth/forgot-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

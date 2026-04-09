@@ -8,6 +8,7 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
 } from "@heroicons/react/24/outline";
+import { apiClient } from "../lib/apiClient";
 
 interface AdminLoginProps {
   onLogin: () => void;
@@ -28,8 +29,8 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
     setSuccess("");
 
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/admin/login",
+      const response = await apiClient.fetch(
+        "/auth/admin/login",
         {
           method: "POST",
           headers: {
@@ -61,7 +62,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5000/api/auth/admin/google";
+    window.location.href = apiClient.getApiUrl("/auth/admin/google");
   };
 
   return (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { apiClient } from "../lib/apiClient";
 
 const TestBackend: React.FC = () => {
   const [healthStatus, setHealthStatus] = useState<string>("Loading...");
@@ -6,7 +7,7 @@ const TestBackend: React.FC = () => {
 
   useEffect(() => {
     // Test health endpoint
-    fetch("http://localhost:5000/health")
+    apiClient.fetch(apiClient.getApiOriginUrl("/health"))
       .then((response) => response.json())
       .then((data) => {
         setHealthStatus(JSON.stringify(data, null, 2));
@@ -21,7 +22,7 @@ const TestBackend: React.FC = () => {
   const testAuth = async () => {
     setAuthTest("Testing...");
     try {
-      const response = await fetch("http://localhost:5000/api/auth/me", {
+      const response = await apiClient.fetch("/auth/me", {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token") || "invalid"}`,
           "Content-Type": "application/json",

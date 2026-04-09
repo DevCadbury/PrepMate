@@ -1,3 +1,4 @@
+import { apiClient } from "../lib/apiClient";
 /**
  * Indian Voice Audio Service
  * Provides authentic Indian English voices using Google Cloud Text-to-Speech API
@@ -257,7 +258,7 @@ class IndianVoiceAudioService {
 
     console.log(`🔊 Synthesizing with Google TTS: ${voiceConfig.name}`);
 
-    const response = await fetch(`${apiUrl}?key=${this.apiKey}`, {
+    const response = await apiClient.fetch(`${apiUrl}?key=${this.apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

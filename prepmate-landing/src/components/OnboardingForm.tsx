@@ -27,6 +27,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import cloudinaryService from "../services/cloudinaryService";
+import { apiClient } from "../lib/apiClient";
 
 interface OnboardingData {
   username: string;
@@ -139,8 +140,8 @@ const OnboardingForm: React.FC<OnboardingFormProps> = ({
 
     setCheckingUsername(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/auth/check-username?username=${username}`
+      const response = await apiClient.fetch(
+        `/auth/check-username?username=${username}`
       );
       const data = await response.json();
       setUsernameAvailable(data.available);

@@ -40,6 +40,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useToast } from "../../ui/toast";
+import { apiClient } from "../../../lib/apiClient";
 
 interface ProfileData {
   user: any;
@@ -73,8 +74,8 @@ const ProfileSearchPage: React.FC = () => {
     setSearching(true);
     setSelectedProfile(null); // Clear selected profile when starting new search
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/search?q=${encodeURIComponent(
+      const response = await apiClient.fetch(
+        `/users/search?q=${encodeURIComponent(
           searchQuery
         )}`,
         {
@@ -104,8 +105,8 @@ const ProfileSearchPage: React.FC = () => {
     setSearchResults([]); // Clear search results to prevent overlay
     setSelectedProfile(null); // Clear any existing profile first
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/profile/${userId}`,
+      const response = await apiClient.fetch(
+        `/users/profile/${userId}`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -137,8 +138,8 @@ const ProfileSearchPage: React.FC = () => {
 
     setFollowLoading(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/follow/${selectedProfile.user._id}`,
+      const response = await apiClient.fetch(
+        `/users/follow/${selectedProfile.user._id}`,
         {
           method: "POST",
           headers: {
@@ -178,8 +179,8 @@ const ProfileSearchPage: React.FC = () => {
 
     setFollowLoading(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/users/unfollow/${selectedProfile.user._id}`,
+      const response = await apiClient.fetch(
+        `/users/unfollow/${selectedProfile.user._id}`,
         {
           method: "POST",
           headers: {

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
+import { apiClient } from "../lib/apiClient";
 
 const ResetPasswordPage: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -32,8 +33,8 @@ const ResetPasswordPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/auth/reset-password/${token}`,
+      const response = await apiClient.fetch(
+        `/auth/reset-password/${token}`,
         {
           method: "POST",
           headers: {

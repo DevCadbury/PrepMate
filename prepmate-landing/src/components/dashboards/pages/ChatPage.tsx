@@ -58,6 +58,7 @@ import {
 } from "../../ui/dropdown-menu";
 import io from "socket.io-client";
 import { ReactionIcon, ReactionPicker } from "../../ui/reaction-icons";
+import { apiClient } from "../../../lib/apiClient";
 
 interface Message {
   _id: string;
@@ -130,6 +131,7 @@ const ChatPage: React.FC = () => {
   const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] =
     useState<NotificationPermission>("default");
   const [mutedRooms, setMutedRooms] = useState<Set<string>>(new Set());
@@ -275,7 +277,7 @@ const ChatPage: React.FC = () => {
     }
 
     console.log("Connecting to chat socket...");
-    const newSocket = io("http://localhost:5000", {
+    const newSocket = io(apiClient.getApiOrigin(), {
       auth: { token },
       transports: ["websocket", "polling"],
       timeout: 20000,
@@ -752,7 +754,7 @@ const ChatPage: React.FC = () => {
 
   const createDirectChat = async (targetUserId: string) => {
     try {
-      const response = await fetch("http://localhost:5000/api/chat/direct", {
+      const response = await apiClient.fetch("/chat/direct", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -812,6 +814,67 @@ const ChatPage: React.FC = () => {
     }
     setBlockedUsers(newBlockedUsers);
     localStorage.setItem("blockedUsers", JSON.stringify([...newBlockedUsers]));
+  };
+
+  const handleDeleteChatRoom = async (roomId: string) => {
+    const room = chatRooms.find((chatRoom) => chatRoom._id === roomId);
+    const roomLabel = room
+      ? room.type === "group"
+        ? room.name || "this group chat"
+        : room.participants.find((participant) => participant._id !== user?.id)
+            ?.name || "this chat"
+      : "this chat";
+
+    const confirmed = window.confirm(
+      `Delete ${roomLabel}? This clears chat history for your account.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingRoomId(roomId);
+    try {
+      const response = await apiClient.fetch(
+        `/chat/room/${roomId}/clear`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({ clearForEveryone: false }),
+        }
+      );
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to delete chat");
+      }
+
+      setChatRooms((prev) => prev.filter((chatRoom) => chatRoom._id !== roomId));
+
+      if (currentRoom?._id === roomId) {
+        setCurrentRoom(null);
+        setMessages([]);
+        setTypingUsers([]);
+        setPendingMessages([]);
+        setCurrentMessagesPage(1);
+        setHasMoreMessages(true);
+        setLoadingMoreMessages(false);
+        navigate("/chat");
+      }
+
+      success("Chat deleted", "Messages were cleared for your account.");
+    } catch (err: any) {
+      console.error("Error deleting chat room:", err);
+      showErrorRef.current(
+        "Delete chat failed",
+        err?.message || "Please try again."
+      );
+    } finally {
+      setDeletingRoomId(null);
+    }
   };
 
   const isUserBlocked = (userId: string) => {
@@ -1021,8 +1084,8 @@ const ChatPage: React.FC = () => {
     }
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/chat/messages/${messageId}/reactions`,
+      const response = await apiClient.fetch(
+        `/chat/messages/${messageId}/reactions`,
         {
           method: "POST",
           headers: {
@@ -1086,8 +1149,8 @@ const ChatPage: React.FC = () => {
     }
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/chat/messages/${messageId}`,
+      const response = await apiClient.fetch(
+        `/chat/messages/${messageId}`,
         {
           method: "DELETE",
           headers: {
@@ -1132,8 +1195,8 @@ const ChatPage: React.FC = () => {
     }
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/chat/messages/${messageId}/report`,
+      const response = await apiClient.fetch(
+        `/chat/messages/${messageId}/report`,
         {
           method: "POST",
           headers: {
@@ -1184,7 +1247,7 @@ const ChatPage: React.FC = () => {
 
   const fetchChatRooms = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/chat/rooms", {
+      const response = await apiClient.fetch("/chat/rooms", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (response.ok) {
@@ -1218,7 +1281,7 @@ const ChatPage: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/users", {
+      const response = await apiClient.fetch("/users", {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (response.ok) {
@@ -1251,8 +1314,8 @@ const ChatPage: React.FC = () => {
     console.log("Fetching messages for room:", roomId, params.toString());
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/chat/room/${roomId}/messages?${params.toString()}`,
+      const response = await apiClient.fetch(
+        `/chat/room/${roomId}/messages?${params.toString()}`,
         {
           headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
         }
@@ -1342,7 +1405,7 @@ const ChatPage: React.FC = () => {
 
   const markMessagesAsSeen = async (roomId: string) => {
     try {
-      await fetch(`http://localhost:5000/api/chat/room/${roomId}/seen`, {
+      await apiClient.fetch(`/chat/room/${roomId}/seen`, {
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
@@ -1441,7 +1504,7 @@ const ChatPage: React.FC = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/chat/group", {
+      const response = await apiClient.fetch("/chat/group", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1517,7 +1580,7 @@ const ChatPage: React.FC = () => {
     const duration = durationMatch ? durationMatch[1] : null;
 
     if (text.startsWith("📞")) {
-      return { title: "Call Started", accent: "text-blue-700", duration };
+      return { title: "Call Started", accent: "text-primary", duration };
     }
     if (text.startsWith("✅")) {
       return { title: "Call Connected", accent: "text-emerald-700", duration };
@@ -1525,17 +1588,17 @@ const ChatPage: React.FC = () => {
     if (text.startsWith("❌")) {
       return { title: "Call Rejected", accent: "text-rose-700", duration };
     }
-    return { title: "Call Ended", accent: "text-slate-700", duration };
+    return { title: "Call Ended", accent: "text-muted-foreground", duration };
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "sent":
-        return <Check className="w-3 h-3 text-gray-400" />;
+        return <Check className="w-3 h-3 text-muted-foreground" />;
       case "delivered":
-        return <CheckCheck className="w-3 h-3 text-blue-500" />;
+        return <CheckCheck className="w-3 h-3 text-primary" />;
       case "seen":
-        return <Eye className="w-3 h-3 text-blue-600" />;
+        return <Eye className="w-3 h-3 text-primary" />;
       case "pending":
         return <Clock className="w-3 h-3 text-yellow-500" />;
       default:
@@ -1545,7 +1608,7 @@ const ChatPage: React.FC = () => {
 
   const TypingIndicator = () => (
     <div className="flex justify-start mb-4">
-      <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-3 py-2">
+      <div className="flex items-center space-x-2 bg-muted rounded-lg px-3 py-2">
         <div className="flex space-x-1">
           <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
           <div
@@ -1557,7 +1620,7 @@ const ChatPage: React.FC = () => {
             style={{ animationDelay: "0.2s" }}
           ></div>
         </div>
-        <span className="text-xs text-gray-600 font-medium">
+        <span className="text-xs text-muted-foreground font-medium">
           {`${typingUsers.join(", ")} ${
             typingUsers.length === 1 ? "is" : "are"
           } typing`}
@@ -1862,10 +1925,10 @@ const ChatPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+      <div className="flex items-center justify-center h-screen bg-gradient-to-br from-background to-muted">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading chat...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading chat...</p>
         </div>
       </div>
     );
@@ -1891,15 +1954,15 @@ const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background">
       {/* Chat Rooms Sidebar */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col shadow-lg">
+      <div className="w-80 bg-card border-r border-border flex flex-col shadow-lg">
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 text-white">
+        <div className="p-4 border-b border-border bg-card border-b border-border text-foreground">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center shadow-lg">
-                <span className="text-white font-semibold text-lg">
+              <div className="w-10 h-10 bg-card/20 rounded-full flex items-center justify-center shadow-lg">
+                <span className="text-primary font-semibold text-lg">
                   {user?.name?.charAt(0) || "U"}
                 </span>
               </div>
@@ -1912,7 +1975,7 @@ const ChatPage: React.FC = () => {
                       0
                     )}
                   </Badge>
-                  <span className="text-xs text-purple-200">
+                  <span className="text-xs text-primary">
                     unread messages
                   </span>
                 </div>
@@ -1922,21 +1985,21 @@ const ChatPage: React.FC = () => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-white hover:bg-white/20 rounded-full w-8 h-8"
+                className="text-muted-foreground hover:bg-muted rounded-full w-8 h-8"
               >
                 <Moon className="w-4 h-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-white hover:bg-white/20 rounded-full w-8 h-8"
+                className="text-muted-foreground hover:bg-muted rounded-full w-8 h-8"
               >
                 <Bell className="w-4 h-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-white hover:bg-white/20 rounded-full w-8 h-8"
+                className="text-muted-foreground hover:bg-muted rounded-full w-8 h-8"
                 onClick={() => setShowSettings(true)}
               >
                 <Settings className="w-4 h-4" />
@@ -1946,14 +2009,14 @@ const ChatPage: React.FC = () => {
         </div>
 
         {/* Search Bar */}
-        <div className="p-4 border-b border-gray-200 bg-white">
+        <div className="p-4 border-b border-border bg-card">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               value={chatSearchQuery}
               onChange={(e) => setChatSearchQuery(e.target.value)}
               placeholder="Search chats..."
-              className="pl-10 bg-gray-50 border-gray-200 focus:bg-white"
+              className="pl-10 bg-background border-border focus:bg-card"
             />
           </div>
         </div>
@@ -1961,8 +2024,8 @@ const ChatPage: React.FC = () => {
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto">
           {filteredChatRooms.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
-              <MessageCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+            <div className="p-4 text-center text-muted-foreground">
+              <MessageCircle className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
               <p>No conversations found</p>
             </div>
           ) : (
@@ -1983,8 +2046,8 @@ const ChatPage: React.FC = () => {
                     key={room._id}
                     className={`relative group cursor-pointer rounded-lg p-3 transition-all duration-200 ${
                       isActive
-                        ? "bg-purple-100 border-l-4 border-purple-500"
-                        : "hover:bg-gray-50"
+                        ? "bg-primary border-l-4 border-primary"
+                        : "hover:bg-background"
                     } ${isMuted ? "opacity-60" : ""}`}
                     onClick={() => {
                       navigate(`/chat/${room._id}`);
@@ -2013,7 +2076,7 @@ const ChatPage: React.FC = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <h3 className="font-medium text-gray-900 truncate">
+                            <h3 className="font-medium text-foreground truncate">
                               {displayName}
                             </h3>
                             {room.unreadCount > 0 && (
@@ -2025,17 +2088,17 @@ const ChatPage: React.FC = () => {
                             {room.lastMessage?.message.includes(
                               `@${user?.name}`
                             ) && (
-                              <Badge className="bg-blue-500 text-white text-xs">
+                              <Badge className="bg-primary text-white text-xs">
                                 @
                               </Badge>
                             )}
                           </div>
                           <div className="flex items-center space-x-1">
                             {isMuted && (
-                              <span className="text-gray-400 text-xs">🔇</span>
+                              <span className="text-muted-foreground text-xs">🔇</span>
                             )}
                             {room.lastMessage && (
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 {formatLastMessageTime(
                                   room.lastMessage.createdAt
                                 )}
@@ -2088,23 +2151,22 @@ const ChatPage: React.FC = () => {
                                 <DropdownMenuItem
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    // TODO: Implement delete chat functionality
-                                    showError(
-                                      "Delete Chat",
-                                      "This feature is coming soon!"
-                                    );
+                                    void handleDeleteChatRoom(room._id);
                                   }}
+                                  disabled={deletingRoomId === room._id}
                                   className="text-red-600"
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
-                                  Delete Chat
+                                  {deletingRoomId === room._id
+                                    ? "Deleting..."
+                                    : "Delete Chat"}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
                         </div>
                         {room.lastMessage && (
-                          <p className="text-sm text-gray-500 truncate">
+                          <p className="text-sm text-muted-foreground truncate">
                             <span className="font-medium">
                               {room.lastMessage.senderId.name}:
                             </span>{" "}
@@ -2121,14 +2183,14 @@ const ChatPage: React.FC = () => {
         </div>
 
         {/* New Chat Button */}
-        <div className="p-4 border-t border-gray-200 bg-white">
+        <div className="p-4 border-t border-border bg-card">
           <div className="flex space-x-2">
             <Dialog open={showUserList} onOpenChange={setShowUserList}>
               <DialogTrigger asChild>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="flex-1 hover:bg-purple-50 border-purple-200 text-purple-700"
+                  className="flex-1 hover:bg-purple-50 border-primary text-primary"
                 >
                   <MessageCircle className="w-4 h-4 mr-2" />
                   New Chat
@@ -2166,7 +2228,7 @@ const ChatPage: React.FC = () => {
                       .map((userItem) => (
                         <div
                           key={userItem._id}
-                          className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                          className="flex items-center space-x-3 p-3 hover:bg-background rounded-lg cursor-pointer transition-colors"
                           onClick={() => createDirectChat(userItem._id)}
                         >
                           <Avatar className="w-10 h-10">
@@ -2176,10 +2238,10 @@ const ChatPage: React.FC = () => {
                             </AvatarFallback>
                           </Avatar>
                           <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">
+                            <h4 className="font-medium text-foreground">
                               {userItem.name}
                             </h4>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm text-muted-foreground">
                               {userItem.email}
                             </p>
                           </div>
@@ -2212,7 +2274,7 @@ const ChatPage: React.FC = () => {
 
             <Dialog open={showCreateGroup} onOpenChange={setShowCreateGroup}>
               <DialogTrigger asChild>
-                <Button size="sm" className="bg-purple-500 hover:bg-purple-600">
+                <Button size="sm" className="bg-primary hover:bg-primary">
                   <Plus className="w-4 h-4" />
                 </Button>
               </DialogTrigger>
@@ -2243,7 +2305,7 @@ const ChatPage: React.FC = () => {
                     {filteredUsers.map((user) => (
                       <div
                         key={user._id}
-                        className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                        className="flex items-center space-x-2 p-2 hover:bg-background rounded cursor-pointer"
                         onClick={() => {
                           if (selectedUsers.includes(user._id)) {
                             setSelectedUsers(
@@ -2285,11 +2347,11 @@ const ChatPage: React.FC = () => {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col bg-card">
         {currentRoom ? (
           <>
             {/* Chat Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+            <div className="flex items-center justify-between p-4 border-b border-border bg-card">
               <div className="flex items-center space-x-3">
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={getOtherParticipant()?.profilePicture} />
@@ -2298,10 +2360,10 @@ const ChatPage: React.FC = () => {
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h3 className="font-semibold text-gray-900">
+                  <h3 className="font-semibold text-foreground">
                     {getOtherParticipant()?.name || "Unknown User"}
                   </h3>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     {getOtherParticipant()?.isOnline ? "Online" : "Offline"}
                   </p>
                 </div>
@@ -2340,14 +2402,14 @@ const ChatPage: React.FC = () => {
             </div>
 
             {(outgoingCall || activeCall) && (
-              <div className="px-4 py-2 border-b border-gray-100 bg-purple-50 flex items-center justify-between">
-                <div className="text-sm text-purple-800 font-medium space-y-1">
+              <div className="px-4 py-2 border-b border-border bg-purple-50 flex items-center justify-between">
+                <div className="text-sm text-primary font-medium space-y-1">
                   <div>
                     {activeCall
                       ? `${activeCall.callType === "video" ? "Video" : "Voice"} call with ${activeCall.participantName}`
                       : `${outgoingCall?.callType === "video" ? "Video" : "Voice"} calling ${outgoingCall?.recipientName}...`}
                   </div>
-                  <div className="text-xs text-purple-700">
+                  <div className="text-xs text-primary">
                     Status: {callStatus}
                     {callStatus === "connected"
                       ? ` • ${formatDurationFromSeconds(callDurationSeconds)}`
@@ -2387,21 +2449,21 @@ const ChatPage: React.FC = () => {
               {chatLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mx-auto mb-2"></div>
-                    <p className="mt-2 text-gray-500">Loading messages...</p>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="mt-2 text-muted-foreground">Loading messages...</p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {loadingMoreMessages && (
                     <div className="flex items-center justify-center py-2">
-                      <span className="text-xs text-gray-500">Loading older messages...</span>
+                      <span className="text-xs text-muted-foreground">Loading older messages...</span>
                     </div>
                   )}
 
                   {!hasMoreMessages && messages.length > 0 && (
                     <div className="flex items-center justify-center py-2">
-                      <span className="text-xs text-gray-400">Start of conversation</span>
+                      <span className="text-xs text-muted-foreground">Start of conversation</span>
                     </div>
                   )}
 
@@ -2417,8 +2479,8 @@ const ChatPage: React.FC = () => {
                       <div key={message._id}>
                         {showDate && (
                           <div className="flex items-center justify-center my-4">
-                            <div className="bg-gray-100 px-3 py-1 rounded-full">
-                              <span className="text-xs text-gray-500">
+                            <div className="bg-muted px-3 py-1 rounded-full">
+                              <span className="text-xs text-muted-foreground">
                                 {formatDate(message.createdAt)}
                               </span>
                             </div>
@@ -2429,11 +2491,11 @@ const ChatPage: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setSelectedCallLog(message)}
-                              className="group px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs border border-blue-200 hover:bg-blue-100 transition-all duration-200"
+                              className="group px-3 py-1 rounded-full bg-blue-50 text-primary text-xs border border-primary hover:bg-primary transition-all duration-200"
                               title="Click to view call details"
                             >
                               <span>{message.message} • {formatTime(message.createdAt)}</span>
-                              <span className="ml-2 opacity-0 group-hover:opacity-100 text-blue-800 font-medium">
+                              <span className="ml-2 opacity-0 group-hover:opacity-100 text-primary font-medium">
                                 View
                               </span>
                             </button>
@@ -2460,12 +2522,12 @@ const ChatPage: React.FC = () => {
                                 <div
                                   className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                                     isOwnMessage
-                                      ? "bg-purple-500 text-white"
-                                      : "bg-gray-100 text-gray-900"
+                                      ? "bg-primary text-white"
+                                      : "bg-muted text-foreground"
                                   }`}
                                 >
                                   {message.isDeleted ? (
-                                    <p className="text-sm italic text-gray-500">
+                                    <p className="text-sm italic text-muted-foreground">
                                       This message was deleted
                                     </p>
                                   ) : (
@@ -2475,8 +2537,8 @@ const ChatPage: React.FC = () => {
                                   <div
                                     className={`flex items-center justify-between mt-1 text-xs ${
                                       isOwnMessage
-                                        ? "text-purple-100"
-                                        : "text-gray-500"
+                                        ? "text-primary"
+                                        : "text-muted-foreground"
                                     }`}
                                   >
                                     <span>{formatTime(message.createdAt)}</span>
@@ -2621,7 +2683,7 @@ const ChatPage: React.FC = () => {
             </div>
 
             {/* Message Input */}
-            <div className="bg-white/90 backdrop-blur-sm border-t border-gray-200 p-4">
+            <div className="bg-card/90 backdrop-blur-sm border-t border-border p-4">
               <div className="flex items-center space-x-2">
                 <div className="flex-1 relative">
                   <Textarea
@@ -2650,14 +2712,14 @@ const ChatPage: React.FC = () => {
                     }}
                     placeholder="Type a message... Use @ to mention users"
                     className={`min-h-[40px] max-h-32 resize-none ${
-                      isTyping ? "border-purple-300 ring-1 ring-purple-300" : ""
+                      isTyping ? "border-primary ring-1 ring-purple-300" : ""
                     }`}
                     rows={1}
                   />
 
                   {/* Character Counter */}
                   {newMessage.length > 0 && (
-                    <div className="absolute bottom-1 right-2 text-xs text-gray-500">
+                    <div className="absolute bottom-1 right-2 text-xs text-muted-foreground">
                       {newMessage.length}/50,000
                     </div>
                   )}
@@ -2674,9 +2736,9 @@ const ChatPage: React.FC = () => {
 
                   {/* Mentions Dropdown */}
                   {showMentions && currentRoom && (
-                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto z-50">
+                    <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto z-50">
                       <div className="p-2">
-                        <div className="text-xs text-gray-500 mb-2 px-2">
+                        <div className="text-xs text-muted-foreground mb-2 px-2">
                           Mention a user:
                         </div>
                         {currentRoom.participants
@@ -2689,7 +2751,7 @@ const ChatPage: React.FC = () => {
                           .map((participant) => (
                             <div
                               key={participant._id}
-                              className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                              className="flex items-center space-x-2 p-2 hover:bg-background rounded cursor-pointer"
                               onClick={() => handleMentionSelect(participant)}
                             >
                               <Avatar className="w-6 h-6">
@@ -2738,7 +2800,7 @@ const ChatPage: React.FC = () => {
                 <Button
                   onClick={sendMessage}
                   disabled={!newMessage.trim()}
-                  className="bg-purple-500 hover:bg-purple-600 text-white"
+                  className="bg-primary hover:bg-primary text-white"
                 >
                   <Send className="w-4 h-4" />
                 </Button>
@@ -2755,18 +2817,18 @@ const ChatPage: React.FC = () => {
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <MessageCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
+              <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">
                 {roomId ? "Loading conversation..." : "Select a conversation"}
               </h3>
-              <p className="text-gray-500">
+              <p className="text-muted-foreground">
                 {roomId
                   ? "Please wait while we load the chat..."
                   : "Choose a chat from the sidebar to start messaging"}
               </p>
               {roomId && (
                 <div className="mt-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500 mx-auto"></div>
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
                 </div>
               )}
             </div>
@@ -2776,9 +2838,9 @@ const ChatPage: React.FC = () => {
 
       {incomingCall && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">Incoming call</h3>
-            <p className="text-sm text-gray-600 mt-1">
+          <div className="w-full max-w-sm rounded-xl bg-card p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-foreground">Incoming call</h3>
+            <p className="text-sm text-muted-foreground mt-1">
               {incomingCall.callerName} is calling you ({incomingCall.callType})
             </p>
             <p className="text-xs text-amber-600 mt-1 font-medium">Status: ringing</p>
@@ -2793,7 +2855,7 @@ const ChatPage: React.FC = () => {
       )}
 
       {(activeCall || outgoingCall) && (
-        <div className="fixed bottom-4 right-4 z-50 w-[360px] md:w-[430px] rounded-2xl bg-gray-900/95 backdrop-blur p-4 shadow-2xl text-white border border-gray-700/80">
+        <div className="fixed bottom-4 right-4 z-50 w-[360px] md:w-[430px] rounded-2xl bg-popover/95 backdrop-blur p-4 shadow-2xl text-white border border-border/80">
           <div className="w-full">
             <div className="flex items-center justify-between mb-3">
               <div>
@@ -2802,7 +2864,7 @@ const ChatPage: React.FC = () => {
                     ? `${activeCall.callType === "video" ? "Video" : "Voice"} call with ${activeCall.participantName}`
                     : `${outgoingCall?.callType === "video" ? "Video" : "Voice"} calling ${outgoingCall?.recipientName}...`}
                 </h3>
-                <p className="text-xs text-gray-300">
+                <p className="text-xs text-muted-foreground">
                   {callStatus}
                   {callStatus === "connected"
                     ? ` • ${formatDurationFromSeconds(callDurationSeconds)}`
@@ -2830,7 +2892,7 @@ const ChatPage: React.FC = () => {
 
             {(activeCall?.callType === "video" || outgoingCall?.callType === "video") && (
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg bg-black/40 aspect-video overflow-hidden border border-gray-700">
+                <div className="rounded-lg bg-black/40 aspect-video overflow-hidden border border-border">
                   <video
                     ref={remoteVideoRef}
                     autoPlay
@@ -2838,7 +2900,7 @@ const ChatPage: React.FC = () => {
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div className="rounded-lg bg-black/40 aspect-video overflow-hidden border border-gray-700">
+                <div className="rounded-lg bg-black/40 aspect-video overflow-hidden border border-border">
                   <video
                     ref={localVideoRef}
                     autoPlay
@@ -2851,9 +2913,9 @@ const ChatPage: React.FC = () => {
             )}
 
             {(activeCall?.callType === "audio" || outgoingCall?.callType === "audio") && (
-              <div className="rounded-lg bg-black/40 border border-gray-700 p-4 text-center">
+              <div className="rounded-lg bg-black/40 border border-border p-4 text-center">
                 <Phone className="w-8 h-8 mx-auto mb-2 text-green-400" />
-                <p className="text-xs text-gray-300">Audio call in progress</p>
+                <p className="text-xs text-muted-foreground">Audio call in progress</p>
               </div>
             )}
           </div>
@@ -2894,7 +2956,7 @@ const ChatPage: React.FC = () => {
                 {selectedCallLog.message}
               </div>
 
-              <div className="rounded-lg border border-gray-200 p-3 text-sm text-gray-700">
+              <div className="rounded-lg border border-border p-3 text-sm text-foreground">
                 <p>
                   <span className="font-semibold">Thread Note:</span> This call log remains in your chat history.
                 </p>
@@ -2916,7 +2978,7 @@ const ChatPage: React.FC = () => {
           <DialogHeader className="relative pb-4">
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center space-x-2 text-xl font-semibold">
-                <Settings className="w-5 h-5 text-blue-600" />
+                <Settings className="w-5 h-5 text-primary" />
                 <span>Chat Settings</span>
               </DialogTitle>
               <Button
@@ -2929,12 +2991,12 @@ const ChatPage: React.FC = () => {
                     "Your chat settings have been updated"
                   );
                 }}
-                className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+                className="h-8 w-8 p-0 hover:bg-muted rounded-full"
               >
                 <X className="w-4 h-4" />
               </Button>
             </div>
-            <DialogDescription className="text-gray-600 mt-2">
+            <DialogDescription className="text-muted-foreground mt-2">
               Manage your chat preferences, notifications, and privacy settings.
             </DialogDescription>
           </DialogHeader>
@@ -2942,12 +3004,12 @@ const ChatPage: React.FC = () => {
           <div className="space-y-6">
             {/* Notifications Section */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 flex items-center space-x-2">
-                <Bell className="w-4 h-4 text-blue-600" />
+              <h3 className="font-semibold text-foreground flex items-center space-x-2">
+                <Bell className="w-4 h-4 text-primary" />
                 <span>Notifications</span>
               </h3>
               <div className="space-y-3 pl-6">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-background rounded-lg">
                   <div className="flex items-center space-x-3">
                     <div
                       className={`w-3 h-3 rounded-full ${
@@ -2959,10 +3021,10 @@ const ChatPage: React.FC = () => {
                       }`}
                     ></div>
                     <div>
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-foreground">
                         Browser Notifications
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-muted-foreground">
                         {notificationPermission === "granted"
                           ? "Enabled"
                           : notificationPermission === "denied"
@@ -2975,7 +3037,7 @@ const ChatPage: React.FC = () => {
                     <Button
                       size="sm"
                       onClick={requestNotificationPermission}
-                      className="bg-blue-500 hover:bg-blue-600"
+                      className="bg-primary hover:bg-primary"
                     >
                       Enable
                     </Button>
@@ -2983,7 +3045,7 @@ const ChatPage: React.FC = () => {
                 </div>
 
                 <div
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:transform hover:-translate-y-1 hover:shadow-lg cursor-pointer"
+                  className="flex items-center justify-between p-3 bg-background rounded-lg hover:bg-muted transition-all duration-200 hover:transform hover:-translate-y-1 hover:shadow-lg cursor-pointer"
                   onClick={() => {
                     setShowMutedRooms(true);
                     success(
@@ -2995,26 +3057,26 @@ const ChatPage: React.FC = () => {
                   <div className="flex items-center space-x-3">
                     <div className="w-3 h-3 rounded-full bg-orange-500"></div>
                     <div>
-                      <p className="font-medium text-gray-900">Muted Rooms</p>
-                      <p className="text-sm text-gray-500">
+                      <p className="font-medium text-foreground">Muted Rooms</p>
+                      <p className="text-sm text-muted-foreground">
                         {mutedRooms.size} conversations muted
                       </p>
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
             </div>
 
             {/* Privacy & Security Section */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 flex items-center space-x-2">
+              <h3 className="font-semibold text-foreground flex items-center space-x-2">
                 <Shield className="w-4 h-4 text-red-600" />
                 <span>Privacy & Security</span>
               </h3>
               <div className="space-y-3 pl-6">
                 <div
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-all duration-200 hover:transform hover:-translate-y-1 hover:shadow-lg cursor-pointer"
+                  className="flex items-center justify-between p-3 bg-background rounded-lg hover:bg-muted transition-all duration-200 hover:transform hover:-translate-y-1 hover:shadow-lg cursor-pointer"
                   onClick={() => {
                     setShowBlockedUsers(true);
                     success(
@@ -3026,29 +3088,29 @@ const ChatPage: React.FC = () => {
                   <div className="flex items-center space-x-3">
                     <div className="w-3 h-3 rounded-full bg-red-500"></div>
                     <div>
-                      <p className="font-medium text-gray-900">Blocked Users</p>
-                      <p className="text-sm text-gray-500">
+                      <p className="font-medium text-foreground">Blocked Users</p>
+                      <p className="text-sm text-muted-foreground">
                         {blockedUsers.size} users blocked
                       </p>
                     </div>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
               </div>
             </div>
 
             {/* Statistics Section */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-gray-900 flex items-center space-x-2">
+              <h3 className="font-semibold text-foreground flex items-center space-x-2">
                 <BarChart3 className="w-4 h-4 text-green-600" />
                 <span>Statistics</span>
               </h3>
               <div className="grid grid-cols-3 gap-3 pl-6">
-                <div className="bg-blue-50 p-3 rounded-lg text-center hover:bg-blue-100 transition-colors">
-                  <p className="text-2xl font-bold text-blue-600">
+                <div className="bg-blue-50 p-3 rounded-lg text-center hover:bg-primary transition-colors">
+                  <p className="text-2xl font-bold text-primary">
                     {chatRooms.length}
                   </p>
-                  <p className="text-xs text-blue-600">Conversations</p>
+                  <p className="text-xs text-primary">Conversations</p>
                 </div>
                 <div className="bg-green-50 p-3 rounded-lg text-center hover:bg-green-100 transition-colors">
                   <p className="text-2xl font-bold text-green-600">
@@ -3056,11 +3118,11 @@ const ChatPage: React.FC = () => {
                   </p>
                   <p className="text-xs text-green-600">Online</p>
                 </div>
-                <div className="bg-purple-50 p-3 rounded-lg text-center hover:bg-purple-100 transition-colors">
-                  <p className="text-2xl font-bold text-purple-600">
+                <div className="bg-purple-50 p-3 rounded-lg text-center hover:bg-primary transition-colors">
+                  <p className="text-2xl font-bold text-primary">
                     {users.length}
                   </p>
-                  <p className="text-xs text-purple-600">Total Users</p>
+                  <p className="text-xs text-primary">Total Users</p>
                 </div>
               </div>
             </div>
@@ -3087,7 +3149,7 @@ const ChatPage: React.FC = () => {
                     "Your muted rooms settings have been saved"
                   );
                 }}
-                className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+                className="h-8 w-8 p-0 hover:bg-muted rounded-full"
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -3100,8 +3162,8 @@ const ChatPage: React.FC = () => {
           <div className="space-y-3">
             {Array.from(mutedRooms).length === 0 ? (
               <div className="text-center py-8">
-                <VolumeX className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500">No muted conversations</p>
+                <VolumeX className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground">No muted conversations</p>
               </div>
             ) : (
               Array.from(mutedRooms).map((roomId) => {
@@ -3116,9 +3178,9 @@ const ChatPage: React.FC = () => {
                 return (
                   <div
                     key={roomId}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    className="flex items-center justify-between p-3 bg-background rounded-lg"
                   >
-                    <span className="font-medium text-gray-900">
+                    <span className="font-medium text-foreground">
                       {roomName}
                     </span>
                     <Button
@@ -3156,7 +3218,7 @@ const ChatPage: React.FC = () => {
                     "Your blocked users settings have been saved"
                   );
                 }}
-                className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full"
+                className="h-8 w-8 p-0 hover:bg-muted rounded-full"
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -3169,8 +3231,8 @@ const ChatPage: React.FC = () => {
           <div className="space-y-3">
             {Array.from(blockedUsers).length === 0 ? (
               <div className="text-center py-8">
-                <Shield className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-500">No blocked users</p>
+                <Shield className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
+                <p className="text-muted-foreground">No blocked users</p>
               </div>
             ) : (
               <>
@@ -3179,7 +3241,7 @@ const ChatPage: React.FC = () => {
                   return (
                     <div
                       key={userId}
-                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className="flex items-center justify-between p-3 bg-background rounded-lg"
                     >
                       <div className="flex items-center space-x-3">
                         <Avatar className="w-8 h-8">
@@ -3188,7 +3250,7 @@ const ChatPage: React.FC = () => {
                             {blockedUser?.name.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="font-medium text-gray-900">
+                        <span className="font-medium text-foreground">
                           {blockedUser?.name || "Unknown User"}
                         </span>
                       </div>

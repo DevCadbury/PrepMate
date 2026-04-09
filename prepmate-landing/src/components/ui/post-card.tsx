@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Heart,
@@ -8,54 +8,40 @@ import {
   MoreVertical,
   Copy,
   Check,
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  Download,
-  Eye,
+  ChevronDown,
+  ChevronUp,
   Code,
-  FileText,
-  Image as ImageIcon,
-  Video,
-  Music,
-  File,
+  Loader2,
+  Reply,
   Trash2,
   Edit,
   Flag,
-  UserPlus,
-  Heart as HeartFilled,
   Send,
-  Smile,
-  Image,
-  Paperclip,
 } from "lucide-react";
 import { Button } from "./button";
 import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
 import { Badge } from "./badge";
-import { Input } from "./input";
 import { Textarea } from "./textarea";
 import { useToast } from "./toast";
 import { useAuth } from "../../contexts/AuthContext";
+import { cn } from "../../lib/utils";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import {
-  atomDark,
-  tomorrow,
-} from "react-syntax-highlighter/dist/esm/styles/prism";
-import io from "socket.io-client";
+import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./dropdown-menu";
+import { Skeleton } from "./skeleton";
+import { apiClient } from "../../lib/apiClient";
 
 interface MediaItem {
-  type: "image" | "video" | "audio" | "file";
+  type: "image" | "video" | "audio" | "file" | "document";
   url: string;
   thumbnail?: string;
   filename?: string;
-  size?: string;
+  size?: string | number;
   duration?: string;
 }
 
@@ -65,21 +51,33 @@ interface CodeSnippet {
   filename?: string;
 }
 
-interface Comment {
+interface ThreadUser {
   _id: string;
-  content: string;
-  user: {
-    _id: string;
-    name: string;
-    username: string;
-    profilePicture?: string;
-  };
-  createdAt: string;
-  likes?: number;
-  isLiked?: boolean;
+  name: string;
+  username: string;
+  profilePicture?: string;
 }
 
-interface Post {
+interface ThreadReply {
+  _id: string;
+  content: string;
+  user: ThreadUser;
+  createdAt: string;
+  likes: number;
+  isLiked: boolean;
+}
+
+interface ThreadComment {
+  _id: string;
+  content: string;
+  user: ThreadUser;
+  createdAt: string;
+  likes: number;
+  isLiked: boolean;
+  replies: ThreadReply[];
+}
+
+export interface PostCardPost {
   id: string;
   content: string;
   author: {
@@ -87,9 +85,9 @@ interface Post {
     name: string;
     username: string;
     profilePicture?: string;
-    role: string;
+    role?: string;
   };
-  type: "text" | "code" | "media" | "achievement" | "question" | "resource";
+  type: string;
   media?: MediaItem[];
   codeSnippets?: CodeSnippet[];
   likes: number;
@@ -99,7 +97,6 @@ interface Post {
   createdAt: string;
   isLiked?: boolean;
   isBookmarked?: boolean;
-  isFollowing?: boolean;
   tags?: string[];
   location?: string;
   mood?: string;
@@ -108,18 +105,106 @@ interface Post {
 }
 
 interface PostCardProps {
-  post: Post;
-  onLike?: (postId: string) => void;
-  onComment?: (postId: string) => void;
-  onShare?: (postId: string) => void;
-  onBookmark?: (postId: string) => void;
+  post: PostCardPost;
+  onLike?: (postId: string, isLiked: boolean, likeCount: number) => void;
+  onComment?: (postId: string, commentCount: number) => void;
+  onShare?: (postId: string, shareCount: number) => void;
+  onBookmark?: (
+    postId: string,
+    isBookmarked: boolean,
+    bookmarkCount: number
+  ) => void;
   onDelete?: (postId: string) => void;
   onEdit?: (postId: string) => void;
-  onFollow?: (userId: string) => void;
   onReport?: (postId: string) => void;
-  showComments?: boolean;
   onViewProfile?: (username: string) => void;
 }
+
+const formatTimeAgo = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return "Just now";
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  return date.toLocaleDateString();
+};
+
+const CONTENT_PREVIEW_LIMIT = 360;
+
+const highlightContent = (value: string) => {
+  const tokens = value.split(/(#[a-zA-Z0-9_]+|@[a-zA-Z0-9_]+)/g);
+  return tokens.map((token, index) => {
+    if (/^#[a-zA-Z0-9_]+$/.test(token)) {
+      return (
+        <span
+          key={`token-${index}`}
+          className="font-medium text-social-700 bg-social-50 px-1 py-0.5 rounded"
+        >
+          {token}
+        </span>
+      );
+    }
+
+    if (/^@[a-zA-Z0-9_]+$/.test(token)) {
+      return (
+        <span
+          key={`token-${index}`}
+          className="font-medium text-coding-700 bg-coding-50 px-1 py-0.5 rounded"
+        >
+          {token}
+        </span>
+      );
+    }
+
+    return <React.Fragment key={`token-${index}`}>{token}</React.Fragment>;
+  });
+};
+
+const normalizeReply = (reply: any): ThreadReply => {
+  const likesValue = Array.isArray(reply?.likes)
+    ? reply.likes.length
+    : Number(reply?.likes || 0);
+
+  return {
+    _id: reply?._id || `reply-${Date.now()}`,
+    content: reply?.content || "",
+    user: {
+      _id: reply?.user?._id || "",
+      name: reply?.user?.name || "Unknown",
+      username: reply?.user?.username || "unknown",
+      profilePicture: reply?.user?.profilePicture,
+    },
+    createdAt: reply?.createdAt || new Date().toISOString(),
+    likes: likesValue,
+    isLiked: Boolean(reply?.isLiked),
+  };
+};
+
+const normalizeComment = (comment: any): ThreadComment => {
+  const likesValue = Array.isArray(comment?.likes)
+    ? comment.likes.length
+    : Number(comment?.likes || 0);
+
+  return {
+    _id: comment?._id || `comment-${Date.now()}`,
+    content: comment?.content || "",
+    user: {
+      _id: comment?.user?._id || "",
+      name: comment?.user?.name || "Unknown",
+      username: comment?.user?.username || "unknown",
+      profilePicture: comment?.user?.profilePicture,
+    },
+    createdAt: comment?.createdAt || new Date().toISOString(),
+    likes: likesValue,
+    isLiked: Boolean(comment?.isLiked),
+    replies: Array.isArray(comment?.replies)
+      ? comment.replies.map(normalizeReply)
+      : [],
+  };
+};
 
 const PostCard: React.FC<PostCardProps> = ({
   post,
@@ -129,176 +214,179 @@ const PostCard: React.FC<PostCardProps> = ({
   onBookmark,
   onDelete,
   onEdit,
-  onFollow,
   onReport,
-  showComments: initialShowComments = false,
   onViewProfile,
 }) => {
   const { user } = useAuth();
-  const { success, error } = useToast();
-  const [isLiked, setIsLiked] = useState(post.isLiked || false);
-  const [likeCount, setLikeCount] = useState(post.likes);
-  const [isBookmarked, setIsBookmarked] = useState(post.isBookmarked || false);
-  const [showComments, setShowComments] = useState(initialShowComments);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [newComment, setNewComment] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showHeartAnimation, setShowHeartAnimation] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [showMediaControls, setShowMediaControls] = useState(false);
-  const [isLoadingComments, setIsLoadingComments] = useState(false);
-  const [socket, setSocket] = useState<any>(null);
-  const commentInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const { success, error: showError } = useToast();
 
-  // Initialize socket connection for real-time updates
+  const [isLiked, setIsLiked] = useState(Boolean(post.isLiked));
+  const [likeCount, setLikeCount] = useState(post.likes || 0);
+  const [isBookmarked, setIsBookmarked] = useState(Boolean(post.isBookmarked));
+  const [bookmarkCount, setBookmarkCount] = useState(post.bookmarks || 0);
+  const [shareCount, setShareCount] = useState(post.shares || 0);
+  const [commentCount, setCommentCount] = useState(post.comments || 0);
+
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [comments, setComments] = useState<ThreadComment[]>([]);
+  const [showAllComments, setShowAllComments] = useState(false);
+
+  const [commentDraft, setCommentDraft] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [activeReplyCommentId, setActiveReplyCommentId] = useState<string | null>(
+    null
+  );
+  const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
+
+  const [likePending, setLikePending] = useState(false);
+  const [bookmarkPending, setBookmarkPending] = useState(false);
+  const [sharePending, setSharePending] = useState(false);
+  const [commentPending, setCommentPending] = useState(false);
+  const [commentLikePendingMap, setCommentLikePendingMap] = useState<
+    Record<string, boolean>
+  >({});
+  const [replyPendingMap, setReplyPendingMap] = useState<Record<string, boolean>>({});
+
+  const [heartBurst, setHeartBurst] = useState(false);
+  const [copiedSnippetKey, setCopiedSnippetKey] = useState<string | null>(null);
+  const [highlightedThreadIds, setHighlightedThreadIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
+
+  const replyComposerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   useEffect(() => {
-    const newSocket = io("http://localhost:5000", {
-      auth: {
-        token: localStorage.getItem("token"),
-      },
-    });
+    setIsLiked(Boolean(post.isLiked));
+    setLikeCount(post.likes || 0);
+    setIsBookmarked(Boolean(post.isBookmarked));
+    setBookmarkCount(post.bookmarks || 0);
+    setShareCount(post.shares || 0);
+    setCommentCount(post.comments || 0);
+  }, [post]);
 
-    newSocket.on("connect", () => {
-      console.log("Connected to socket server");
-      newSocket.emit("join-post", post.id);
-    });
-
-    newSocket.on("new-comment", (data: any) => {
-      if (data.postId === post.id) {
-        setComments((prev) => [data.comment, ...prev]);
-        success(
-          "New comment!",
-          `${data.comment.user.name} commented on this post.`
-        );
-      }
-    });
-
-    newSocket.on("comment-liked", (data: any) => {
-      setComments((prev) =>
-        prev.map((comment) =>
-          comment._id === data.commentId
-            ? { ...comment, likes: (comment.likes || 0) + 1, isLiked: true }
-            : comment
-        )
-      );
-    });
-
-    newSocket.on("post-liked", (data: any) => {
-      if (data.postId === post.id) {
-        setLikeCount((prev) => prev + 1);
-        setIsLiked(true);
-        setShowHeartAnimation(true);
-        setTimeout(() => setShowHeartAnimation(false), 1000);
-      }
-    });
-
-    newSocket.on("post-unliked", (data: any) => {
-      if (data.postId === post.id) {
-        setLikeCount((prev) => Math.max(0, prev - 1));
-        setIsLiked(false);
-      }
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.disconnect();
-    };
+  useEffect(() => {
+    setIsContentExpanded(false);
   }, [post.id]);
 
-  // Fetch comments when comments section is opened
-  useEffect(() => {
-    if (showComments && comments.length === 0) {
-      fetchComments();
-    }
-  }, [showComments]);
+  const postContent = post.content || "";
+  const shouldCollapseContent = postContent.length > CONTENT_PREVIEW_LIMIT;
+  const visibleContent =
+    shouldCollapseContent && !isContentExpanded
+      ? `${postContent.slice(0, CONTENT_PREVIEW_LIMIT).trimEnd()}...`
+      : postContent;
 
-  const fetchComments = async () => {
-    setIsLoadingComments(true);
-    try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${post.id}/comments`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setComments(data.comments || []);
-      }
-    } catch (error: any) {
-      console.error("Error fetching comments:", error);
-    } finally {
-      setIsLoadingComments(false);
-    }
-  };
+  const imageMedia = useMemo(
+    () =>
+      Array.isArray(post.media)
+        ? post.media.filter((item) => item.type === "image")
+        : [],
+    [post.media]
+  );
 
-  const handleLike = async () => {
-    if (!user) {
-      error("Authentication required", "Please log in to like posts.");
+  const nonImageMedia = useMemo(
+    () =>
+      Array.isArray(post.media)
+        ? post.media.filter((item) => item.type !== "image")
+        : [],
+    [post.media]
+  );
+
+  const addThreadHighlight = useCallback((threadId: string) => {
+    setHighlightedThreadIds((prev) => {
+      const next = new Set(prev);
+      next.add(threadId);
+      return next;
+    });
+
+    window.setTimeout(() => {
+      setHighlightedThreadIds((prev) => {
+        const next = new Set(prev);
+        next.delete(threadId);
+        return next;
+      });
+    }, 2200);
+  }, []);
+
+  const visibleComments = useMemo(() => {
+    if (showAllComments) return comments;
+    return comments.slice(0, 3);
+  }, [comments, showAllComments]);
+
+  const loadComments = useCallback(async () => {
+    if (commentsLoading || commentsLoaded) {
       return;
     }
 
+    setCommentsLoading(true);
     try {
-      // Optimistic update with instant animation
-      const wasLiked = isLiked;
-      const newLikeCount = wasLiked ? likeCount - 1 : likeCount + 1;
-
-      setIsLiked(!wasLiked);
-      setLikeCount(newLikeCount);
-
-      // Instant heart animation with enhanced timing
-      if (!wasLiked) {
-        setShowHeartAnimation(true);
-        setTimeout(() => setShowHeartAnimation(false), 1200);
-      }
-
-      // Emit socket event for real-time updates
-      socket?.emit("like-post", {
-        postId: post.id,
-        action: wasLiked ? "unlike" : "like",
-      });
-
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${post.id}/like`,
+      const response = await apiClient.fetch(
+        `/social/posts/${post.id}/comments`,
         {
-          method: "POST",
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
           },
         }
       );
 
       if (!response.ok) {
-        // Revert optimistic update on error
-        setIsLiked(wasLiked);
-        setLikeCount(wasLiked ? likeCount : likeCount - 1);
-        throw new Error("Failed to like post");
+        throw new Error("Failed to load comments");
       }
 
-      const data = await response.json();
-      console.log("Like response:", data);
-      onLike?.(post.id);
-    } catch (error: any) {
-      console.error("Error liking post:", error);
-      error("Failed to like post", "Please try again.");
+      const payload = await response.json();
+      const fetchedComments = Array.isArray(payload?.data?.comments)
+        ? payload.data.comments
+        : Array.isArray(payload?.comments)
+          ? payload.comments
+          : [];
+
+      const normalizedComments = fetchedComments.map(normalizeComment);
+      setComments(normalizedComments);
+      setCommentsLoaded(true);
+      setCommentCount(normalizedComments.length);
+      onComment?.(post.id, normalizedComments.length);
+    } catch (err) {
+      showError("Could not load comments", "Please try again.");
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [commentsLoaded, commentsLoading, onComment, post.id, showError]);
+
+  const handleToggleComments = () => {
+    const nextOpen = !commentsOpen;
+    setCommentsOpen(nextOpen);
+    if (nextOpen) {
+      void loadComments();
     }
   };
 
-  const handleBookmark = async () => {
-    if (!user) return;
+  const handleLike = async () => {
+    if (!user || likePending) {
+      return;
+    }
 
+    const previousLiked = isLiked;
+    const previousCount = likeCount;
+    const optimisticLiked = !previousLiked;
+    const optimisticCount = optimisticLiked
+      ? previousCount + 1
+      : Math.max(0, previousCount - 1);
+
+    setIsLiked(optimisticLiked);
+    setLikeCount(optimisticCount);
+    onLike?.(post.id, optimisticLiked, optimisticCount);
+
+    if (optimisticLiked) {
+      setHeartBurst(true);
+      window.setTimeout(() => setHeartBurst(false), 240);
+    }
+
+    setLikePending(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${post.id}/bookmark`,
+      const response = await apiClient.fetch(
+        `/social/posts/${post.id}/like`,
         {
           method: "POST",
           headers: {
@@ -307,483 +395,723 @@ const PostCard: React.FC<PostCardProps> = ({
         }
       );
 
-      if (response.ok) {
-        setIsBookmarked(!isBookmarked);
-        onBookmark?.(post.id);
-
-        if (!isBookmarked) {
-          success("Post bookmarked!", "Added to your bookmarks.");
-        } else {
-          success("Bookmark removed", "Removed from your bookmarks.");
-        }
+      if (!response.ok) {
+        throw new Error("Failed to update like status");
       }
-    } catch (error: any) {
-      error("Failed to bookmark post", "Please try again.");
+
+      const payload = await response.json();
+      const serverLiked =
+        typeof payload?.data?.isLiked === "boolean"
+          ? payload.data.isLiked
+          : optimisticLiked;
+      const serverCount =
+        typeof payload?.data?.likeCount === "number"
+          ? payload.data.likeCount
+          : optimisticCount;
+
+      setIsLiked(serverLiked);
+      setLikeCount(serverCount);
+      onLike?.(post.id, serverLiked, serverCount);
+    } catch (err) {
+      setIsLiked(previousLiked);
+      setLikeCount(previousCount);
+      onLike?.(post.id, previousLiked, previousCount);
+      showError("Like failed", "We rolled back that change.");
+    } finally {
+      setLikePending(false);
     }
   };
 
-  const handleComment = async () => {
-    if (!user || !newComment.trim()) return;
+  const handleBookmark = async () => {
+    if (!user || bookmarkPending) {
+      return;
+    }
 
-    setIsSubmitting(true);
+    const previousBookmarked = isBookmarked;
+    const previousCount = bookmarkCount;
+    const optimisticBookmarked = !previousBookmarked;
+    const optimisticCount = optimisticBookmarked
+      ? previousCount + 1
+      : Math.max(0, previousCount - 1);
+
+    setIsBookmarked(optimisticBookmarked);
+    setBookmarkCount(optimisticCount);
+    onBookmark?.(post.id, optimisticBookmarked, optimisticCount);
+
+    setBookmarkPending(true);
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/social/posts/${post.id}/comments`,
+      const response = await apiClient.fetch(
+        `/social/posts/${post.id}/bookmark`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update bookmark status");
+      }
+
+      const payload = await response.json();
+      const serverBookmarked =
+        typeof payload?.data?.isBookmarked === "boolean"
+          ? payload.data.isBookmarked
+          : optimisticBookmarked;
+      const serverCount =
+        typeof payload?.data?.bookmarkCount === "number"
+          ? payload.data.bookmarkCount
+          : optimisticCount;
+
+      setIsBookmarked(serverBookmarked);
+      setBookmarkCount(serverCount);
+      onBookmark?.(post.id, serverBookmarked, serverCount);
+    } catch (err) {
+      setIsBookmarked(previousBookmarked);
+      setBookmarkCount(previousCount);
+      onBookmark?.(post.id, previousBookmarked, previousCount);
+      showError("Bookmark failed", "We rolled back that change.");
+    } finally {
+      setBookmarkPending(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!user || sharePending) {
+      return;
+    }
+
+    const previousCount = shareCount;
+    const optimisticCount = previousCount + 1;
+
+    setShareCount(optimisticCount);
+    onShare?.(post.id, optimisticCount);
+    setSharePending(true);
+
+    let linkCopied = false;
+    const shareUrl = `${window.location.origin}/feed?post=${post.id}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      linkCopied = true;
+    } catch {
+      linkCopied = false;
+    }
+
+    try {
+      const response = await apiClient.fetch(
+        `/social/posts/${post.id}/share`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to share post");
+      }
+
+      const payload = await response.json();
+      const serverCount =
+        typeof payload?.data?.shareCount === "number"
+          ? payload.data.shareCount
+          : optimisticCount;
+
+      setShareCount(serverCount);
+      onShare?.(post.id, serverCount);
+      success(
+        "Post shared",
+        linkCopied ? "Link copied to clipboard." : "Shared successfully."
+      );
+    } catch (err) {
+      setShareCount(previousCount);
+      onShare?.(post.id, previousCount);
+      showError("Share failed", "We rolled back that change.");
+    } finally {
+      setSharePending(false);
+    }
+  };
+
+  const handleCommentSubmit = async () => {
+    if (!user || commentPending || !commentDraft.trim()) {
+      return;
+    }
+
+    const tempCommentId = `temp-comment-${Date.now()}`;
+    const optimisticComment: ThreadComment = {
+      _id: tempCommentId,
+      content: commentDraft.trim(),
+      user: {
+        _id: user.id,
+        name: user.name,
+        username: user.username || "you",
+        profilePicture: user.profilePicture,
+      },
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      isLiked: false,
+      replies: [],
+    };
+
+    setCommentDraft("");
+    setComments((prev) => [optimisticComment, ...prev]);
+    setCommentCount((prev) => {
+      const next = prev + 1;
+      onComment?.(post.id, next);
+      return next;
+    });
+    addThreadHighlight(tempCommentId);
+
+    setCommentPending(true);
+    try {
+      const response = await apiClient.fetch(
+        `/social/posts/${post.id}/comments`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          body: JSON.stringify({ content: newComment }),
+          body: JSON.stringify({ content: optimisticComment.content }),
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-
-        // Emit socket event for real-time updates
-        socket?.emit("new-comment", {
-          postId: post.id,
-          comment: data.comment,
-        });
-
-        setComments((prev) => [data.comment, ...prev]);
-        setNewComment("");
-        success("Comment posted!", "Your comment has been added.");
-        onComment?.(post.id);
+      if (!response.ok) {
+        throw new Error("Failed to add comment");
       }
-    } catch (error: any) {
-      error("Failed to post comment", "Please try again.");
+
+      const payload = await response.json();
+      const serverComment = normalizeComment(payload?.data?.comment || payload?.comment);
+
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment._id === tempCommentId ? serverComment : comment
+        )
+      );
+      addThreadHighlight(serverComment._id);
+      setCommentsLoaded(true);
+      setShowAllComments(true);
+    } catch (err) {
+      setComments((prev) => prev.filter((comment) => comment._id !== tempCommentId));
+      setCommentCount((prev) => {
+        const next = Math.max(0, prev - 1);
+        onComment?.(post.id, next);
+        return next;
+      });
+      setCommentDraft(optimisticComment.content);
+      showError("Comment failed", "We rolled back that change.");
     } finally {
-      setIsSubmitting(false);
+      setCommentPending(false);
     }
   };
 
-  const handleCommentLike = async (commentId: string) => {
-    if (!user) return;
+  const toggleCommentLike = async (commentId: string) => {
+    if (!user || commentLikePendingMap[commentId]) {
+      return;
+    }
 
+    const targetComment = comments.find((comment) => comment._id === commentId);
+    if (!targetComment) {
+      return;
+    }
+
+    const previousLiked = targetComment.isLiked;
+    const previousLikes = targetComment.likes;
+    const optimisticLiked = !previousLiked;
+    const optimisticLikes = optimisticLiked
+      ? previousLikes + 1
+      : Math.max(0, previousLikes - 1);
+
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment._id === commentId
+          ? {
+              ...comment,
+              isLiked: optimisticLiked,
+              likes: optimisticLikes,
+            }
+          : comment
+      )
+    );
+
+    setCommentLikePendingMap((prev) => ({ ...prev, [commentId]: true }));
     try {
-      // Optimistic update
+      const response = await apiClient.fetch(
+        `/social/comments/${commentId}/like`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to update comment like");
+      }
+
+      const payload = await response.json();
+      const serverLiked =
+        typeof payload?.data?.isLiked === "boolean"
+          ? payload.data.isLiked
+          : optimisticLiked;
+      const serverLikes =
+        typeof payload?.data?.likes === "number"
+          ? payload.data.likes
+          : optimisticLikes;
+
       setComments((prev) =>
         prev.map((comment) =>
           comment._id === commentId
             ? {
                 ...comment,
-                likes: (comment.likes || 0) + 1,
-                isLiked: true,
+                isLiked: serverLiked,
+                likes: serverLikes,
               }
             : comment
         )
       );
+    } catch (err) {
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment._id === commentId
+            ? {
+                ...comment,
+                isLiked: previousLiked,
+                likes: previousLikes,
+              }
+            : comment
+        )
+      );
+      showError("Comment like failed", "We rolled back that change.");
+    } finally {
+      setCommentLikePendingMap((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
+    }
+  };
 
-      // Emit socket event
-      socket?.emit("like-comment", { commentId, postId: post.id });
+  const openReplyComposer = (commentId: string) => {
+    setActiveReplyCommentId(commentId);
+    setExpandedReplies((prev) => {
+      const next = new Set(prev);
+      next.add(commentId);
+      return next;
+    });
 
-      const response = await fetch(
-        `http://localhost:5000/api/social/comments/${commentId}/like`,
+    window.setTimeout(() => {
+      replyComposerRefs.current[commentId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 120);
+  };
+
+  const toggleReplies = (commentId: string) => {
+    setExpandedReplies((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) {
+        next.delete(commentId);
+      } else {
+        next.add(commentId);
+      }
+      return next;
+    });
+  };
+
+  const handleReplySubmit = async (commentId: string) => {
+    if (!user || replyPendingMap[commentId]) {
+      return;
+    }
+
+    const draft = (replyDrafts[commentId] || "").trim();
+    if (!draft) {
+      return;
+    }
+
+    const tempReplyId = `temp-reply-${Date.now()}`;
+    const optimisticReply: ThreadReply = {
+      _id: tempReplyId,
+      content: draft,
+      user: {
+        _id: user.id,
+        name: user.name,
+        username: user.username || "you",
+        profilePicture: user.profilePicture,
+      },
+      createdAt: new Date().toISOString(),
+      likes: 0,
+      isLiked: false,
+    };
+
+    setReplyDrafts((prev) => ({ ...prev, [commentId]: "" }));
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment._id === commentId
+          ? {
+              ...comment,
+              replies: [...comment.replies, optimisticReply],
+            }
+          : comment
+      )
+    );
+    setExpandedReplies((prev) => {
+      const next = new Set(prev);
+      next.add(commentId);
+      return next;
+    });
+    addThreadHighlight(tempReplyId);
+
+    setReplyPendingMap((prev) => ({ ...prev, [commentId]: true }));
+    try {
+      const response = await apiClient.fetch(
+        `/social/posts/${post.id}/comments/${commentId}/replies`,
         {
           method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
+          body: JSON.stringify({ content: draft }),
         }
       );
 
       if (!response.ok) {
-        // Revert on error
-        setComments((prev) =>
-          prev.map((comment) =>
-            comment._id === commentId
-              ? {
-                  ...comment,
-                  likes: Math.max(0, (comment.likes || 0) - 1),
-                  isLiked: false,
-                }
-              : comment
-          )
-        );
+        throw new Error("Failed to add reply");
       }
-    } catch (error: any) {
-      console.error("Error liking comment:", error);
+
+      const payload = await response.json();
+      const serverReply = normalizeReply(payload?.data?.reply || {});
+
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment._id === commentId
+            ? {
+                ...comment,
+                replies: comment.replies.map((reply) =>
+                  reply._id === tempReplyId ? serverReply : reply
+                ),
+              }
+            : comment
+        )
+      );
+      addThreadHighlight(serverReply._id);
+    } catch (err) {
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment._id === commentId
+            ? {
+                ...comment,
+                replies: comment.replies.filter(
+                  (reply) => reply._id !== tempReplyId
+                ),
+              }
+            : comment
+        )
+      );
+      setReplyDrafts((prev) => ({ ...prev, [commentId]: draft }));
+      showError("Reply failed", "We rolled back that change.");
+    } finally {
+      setReplyPendingMap((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
     }
   };
 
-  const copyCode = async (code: string, language: string) => {
+  const copyCode = async (snippetKey: string, code: string) => {
     try {
       await navigator.clipboard.writeText(code);
-      setCopiedCode(language);
-      success("Code copied!", "Code copied to clipboard.");
-      setTimeout(() => setCopiedCode(null), 2000);
-    } catch (error: any) {
-      error("Failed to copy code", "Please try again.");
+      setCopiedSnippetKey(snippetKey);
+      success("Code copied", "Snippet copied to clipboard.");
+      window.setTimeout(() => setCopiedSnippetKey(null), 1200);
+    } catch (err) {
+      showError("Copy failed", "Could not copy code snippet.");
     }
   };
 
-  const handleMediaControl = (action: "play" | "pause" | "mute" | "unmute") => {
-    if (post.media?.[currentMediaIndex]?.type === "video" && videoRef.current) {
-      if (action === "play") {
-        videoRef.current.play();
-        setIsPlaying(true);
-      } else if (action === "pause") {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      } else if (action === "mute") {
-        videoRef.current.muted = true;
-        setIsMuted(true);
-      } else if (action === "unmute") {
-        videoRef.current.muted = false;
-        setIsMuted(false);
+  const handleProfileNavigation = useCallback(
+    (username?: string, userId?: string) => {
+      const normalizedUsername = (username || "").trim();
+      const normalizedUserId = (userId || "").trim();
+
+      const target =
+        normalizedUsername && normalizedUsername !== "unknown"
+          ? normalizedUsername
+          : normalizedUserId;
+
+      if (!target) {
+        return;
       }
-    } else if (
-      post.media?.[currentMediaIndex]?.type === "audio" &&
-      audioRef.current
-    ) {
-      if (action === "play") {
-        audioRef.current.play();
-        setIsPlaying(true);
-      } else if (action === "pause") {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else if (action === "mute") {
-        audioRef.current.muted = true;
-        setIsMuted(true);
-      } else if (action === "unmute") {
-        audioRef.current.muted = false;
-        setIsMuted(false);
-      }
-    }
-  };
 
-  const getMediaIcon = (type: string) => {
-    switch (type) {
-      case "image":
-        return <ImageIcon className="h-5 w-5" />;
-      case "video":
-        return <Video className="h-5 w-5" />;
-      case "audio":
-        return <Music className="h-5 w-5" />;
-      case "file":
-        return <File className="h-5 w-5" />;
-      default:
-        return <FileText className="h-5 w-5" />;
-    }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (diffInSeconds < 60) return "Just now";
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400)
-      return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    if (diffInSeconds < 2592000)
-      return `${Math.floor(diffInSeconds / 86400)}d ago`;
-    return date.toLocaleDateString();
-  };
-
-  if (!post) {
-    return null;
-  }
+      onViewProfile?.(target);
+    },
+    [onViewProfile]
+  );
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
+    <motion.article
+      layout
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden"
+      transition={{ duration: 0.2 }}
+      className="w-full max-w-2xl overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-b from-card via-card to-muted/20 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.6)]"
     >
-      {/* Post Header */}
-      <div className="p-4 border-b border-gray-100 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Avatar
-              className="h-10 w-10 cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => onViewProfile?.(post.author.username)}
+      <div className="h-1 w-full bg-gradient-to-r from-social-500 via-navy-500 to-coding-500" />
+
+      <header className="flex items-center justify-between px-5 pt-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar
+            className="h-11 w-11 cursor-pointer ring-1 ring-border"
+            onClick={() => handleProfileNavigation(post.author.username, post.author.id)}
+          >
+            <AvatarImage src={post.author.profilePicture} />
+            <AvatarFallback className="bg-social-100 text-social-700 font-semibold">
+              {(post.author.name || "U").charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+
+          <div className="min-w-0">
+            <button
+              type="button"
+              onClick={() => handleProfileNavigation(post.author.username, post.author.id)}
+              className="font-semibold text-foreground text-sm hover:underline truncate"
             >
-              <AvatarImage src={post.author.profilePicture} />
-              <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                {post.author.name?.charAt(0)?.toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span
-                  className="font-semibold text-gray-900 dark:text-white cursor-pointer hover:underline"
-                  onClick={() => onViewProfile?.(post.author.username)}
-                >
-                  {post.author.name}
-                </span>
-                <Badge variant="outline" className="text-xs">
-                  {post.type}
-                </Badge>
-              </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {formatTimeAgo(post.createdAt)}
-              </p>
+              {post.author.name}
+            </button>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="truncate">@{post.author.username}</span>
+              <span>•</span>
+              <span>{formatTimeAgo(post.createdAt)}</span>
+              {post.isEdited && <span>• Edited</span>}
             </div>
           </div>
-
-          {/* Post Actions Menu */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {user?.id === post.author.id && (
-                <>
-                  <DropdownMenuItem onClick={() => onEdit?.(post.id)}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onDelete?.(post.id)}>
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </>
-              )}
-              <DropdownMenuItem onClick={() => onReport?.(post.id)}>
-                <Flag className="h-4 w-4 mr-2" />
-                Report
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
-      </div>
 
-      {/* Post Content */}
-      <div className="p-4">
-        <p
-          className="text-gray-900 dark:text-white mb-4 break-words"
-          style={{ wordBreak: "break-word", overflowWrap: "break-word" }}
-        >
-          {post.content}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" className="rounded-full">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            {user?.id === post.author.id && (
+              <>
+                <DropdownMenuItem onClick={() => onEdit?.(post.id)}>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onDelete?.(post.id)}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuItem onClick={() => onReport?.(post.id)}>
+              <Flag className="h-4 w-4 mr-2" />
+              Report
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </header>
+
+      <div className="px-5 pt-4">
+        <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground/95 tracking-[0.01em]">
+          {highlightContent(visibleContent)}
         </p>
 
-        {/* Media Display */}
-        {post.media && post.media.length > 0 && (
-          <div className="relative mb-4">
-            {post.media[currentMediaIndex]?.type === "image" && (
-              <img
-                src={post.media[currentMediaIndex].url}
-                alt="Post media"
-                className="w-full h-auto rounded-lg"
-              />
-            )}
-
-            {post.media[currentMediaIndex]?.type === "video" && (
-              <div className="relative">
-                <video
-                  ref={videoRef}
-                  src={post.media[currentMediaIndex].url}
-                  className="w-full h-auto rounded-lg"
-                  onMouseEnter={() => setShowMediaControls(true)}
-                  onMouseLeave={() => setShowMediaControls(false)}
-                />
-                {showMediaControls && (
-                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          handleMediaControl(isPlaying ? "pause" : "play")
-                        }
-                      >
-                        {isPlaying ? (
-                          <Pause className="h-4 w-4" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() =>
-                          handleMediaControl(isMuted ? "unmute" : "mute")
-                        }
-                      >
-                        {isMuted ? (
-                          <VolumeX className="h-4 w-4" />
-                        ) : (
-                          <Volume2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {post.media[currentMediaIndex]?.type === "audio" && (
-              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
-                <audio
-                  ref={audioRef}
-                  src={post.media[currentMediaIndex].url}
-                  controls
-                  className="w-full"
-                />
-              </div>
-            )}
-
-            {post.media[currentMediaIndex]?.type === "file" && (
-              <div className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
-                <div className="flex items-center gap-3">
-                  {getMediaIcon(post.media[currentMediaIndex].type)}
-                  <div className="flex-1">
-                    <p className="font-medium">
-                      {post.media[currentMediaIndex].filename}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {post.media[currentMediaIndex].size &&
-                        formatFileSize(
-                          parseInt(post.media[currentMediaIndex].size || "0")
-                        )}
-                    </p>
-                  </div>
-                  <Button size="sm" variant="outline">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Media Navigation */}
-            {post.media.length > 1 && (
-              <div className="flex justify-center gap-2 mt-2">
-                {post.media.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentMediaIndex(index)}
-                    className={`w-2 h-2 rounded-full ${
-                      index === currentMediaIndex
-                        ? "bg-blue-500"
-                        : "bg-gray-300 dark:bg-gray-600"
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+        {shouldCollapseContent && (
+          <button
+            type="button"
+            onClick={() => setIsContentExpanded((prev) => !prev)}
+            className="mt-2 text-xs font-semibold text-social-700 hover:text-social-800 transition-colors"
+          >
+            {isContentExpanded ? "Show less" : "Read more"}
+          </button>
         )}
 
-        {/* Code Snippets */}
-        {post.codeSnippets && post.codeSnippets.length > 0 && (
-          <div className="space-y-4 mb-4">
-            {post.codeSnippets.map((snippet, index) => (
-              <div key={index} className="relative">
-                <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-t-lg">
-                  <div className="flex items-center gap-2">
-                    <Code className="h-4 w-4" />
-                    <span className="text-sm font-medium">
-                      {snippet.language}
-                    </span>
-                    {snippet.filename && (
-                      <span className="text-xs text-gray-500">
-                        ({snippet.filename})
-                      </span>
-                    )}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => copyCode(snippet.code, snippet.language)}
-                  >
-                    {copiedCode === snippet.language ? (
-                      <Check className="h-4 w-4" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                <SyntaxHighlighter
-                  language={snippet.language}
-                  style={atomDark}
-                  className="rounded-b-lg"
-                >
-                  {snippet.code}
-                </SyntaxHighlighter>
-              </div>
+        {Array.isArray(post.tags) && post.tags.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {post.tags.slice(0, 8).map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-xs">
+                #{tag}
+              </Badge>
             ))}
           </div>
         )}
       </div>
 
-      {/* Post Actions */}
-      <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+      {imageMedia.length > 0 && (
+        <div className="px-5 pt-4 space-y-3">
+          <div
+            className={cn(
+              "grid gap-2",
+              imageMedia.length === 1 && "grid-cols-1",
+              imageMedia.length === 2 && "grid-cols-2",
+              imageMedia.length >= 3 && "grid-cols-2 md:grid-cols-3"
+            )}
+          >
+            {imageMedia.map((mediaItem, index) => (
+              <div
+                key={`${post.id}-image-media-${index}`}
+                className={cn(
+                  "rounded-xl border overflow-hidden bg-muted/30",
+                  imageMedia.length >= 3 && index === 0 && "md:col-span-2"
+                )}
+              >
+                <img
+                  src={mediaItem.url}
+                  alt={mediaItem.filename || "Post media"}
+                  className="w-full h-52 md:h-64 object-cover transition-transform duration-300 hover:scale-[1.02]"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {nonImageMedia.length > 0 && (
+        <div className="px-5 pt-4 space-y-3">
+          {nonImageMedia.map((mediaItem, index) => (
+            <div key={`${post.id}-media-${index}`} className="rounded-xl border overflow-hidden bg-muted/30">
+              {mediaItem.type === "video" && (
+                <video src={mediaItem.url} controls className="w-full max-h-[460px] object-contain bg-black" />
+              )}
+              {mediaItem.type === "audio" && (
+                <div className="p-4">
+                  <audio src={mediaItem.url} controls className="w-full" />
+                </div>
+              )}
+              {(mediaItem.type === "file" || mediaItem.type === "document") && (
+                <div className="p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">{mediaItem.filename || "Attachment"}</p>
+                    <p className="text-xs text-muted-foreground">{mediaItem.size || "File"}</p>
+                  </div>
+                  <a href={mediaItem.url} target="_blank" rel="noreferrer">
+                    <Button size="sm" variant="outline">
+                      Open
+                    </Button>
+                  </a>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {Array.isArray(post.codeSnippets) && post.codeSnippets.length > 0 && (
+        <div className="px-5 pt-4 space-y-3">
+          {post.codeSnippets.map((snippet, index) => {
+            const snippetKey = `${snippet.language}-${index}`;
+            return (
+              <div
+                key={`${post.id}-snippet-${index}`}
+                className="overflow-hidden rounded-xl border border-border"
+              >
+                <div className="flex items-center justify-between px-4 py-2 bg-muted/60 border-b border-border">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Code className="h-4 w-4 text-coding-600" />
+                    <span className="text-xs uppercase font-semibold tracking-wide">
+                      {snippet.language}
+                    </span>
+                    {snippet.filename && (
+                      <span className="text-xs text-muted-foreground truncate">
+                        {snippet.filename}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => copyCode(snippetKey, snippet.code)}
+                    className="rounded-full"
+                  >
+                    {copiedSnippetKey === snippetKey ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <SyntaxHighlighter
+                  language={snippet.language || "javascript"}
+                  style={atomDark}
+                  customStyle={{ margin: 0, borderRadius: 0, fontSize: "13px" }}
+                >
+                  {snippet.code || ""}
+                </SyntaxHighlighter>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-4 border-t border-border/70 bg-gradient-to-r from-muted/30 via-background to-muted/20 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleLike}
-              className={`flex items-center gap-2 ${
-                isLiked ? "text-red-500" : "text-gray-500 hover:text-red-500"
-              }`}
+              disabled={likePending}
+              className={cn(
+                "h-9 px-3 gap-2 rounded-full transition-all duration-200 active:scale-95",
+                isLiked
+                  ? "text-red-600 hover:text-red-700 hover:bg-red-50"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
             >
-              <motion.div
-                animate={
-                  showHeartAnimation
-                    ? {
-                        scale: [1, 1.5, 1.2, 1],
-                        rotate: [0, -10, 10, 0],
-                      }
-                    : {}
-                }
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="relative"
-              >
-                {isLiked ? (
-                  <HeartFilled className="h-5 w-5 fill-current" />
-                ) : (
-                  <Heart className="h-5 w-5" />
-                )}
-                {showHeartAnimation && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: [0, 1, 0], scale: [0, 1.5, 2] }}
-                    transition={{ duration: 1 }}
-                    className="absolute inset-0 flex items-center justify-center"
-                  >
-                    <HeartFilled className="h-8 w-8 text-red-500 fill-current" />
-                  </motion.div>
-                )}
-              </motion.div>
-              <span className="text-sm">{likeCount}</span>
+              <span className="relative">
+                <Heart className={cn("h-4.5 w-4.5", isLiked && "fill-current")} />
+                <AnimatePresence>
+                  {heartBurst && (
+                    <motion.span
+                      initial={{ opacity: 0.7, scale: 1 }}
+                      animate={{ opacity: 0, scale: 2.1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute inset-0"
+                    >
+                      <Heart className="h-4.5 w-4.5 fill-current text-red-500" />
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </span>
+              <span className="text-sm font-medium">{likeCount}</span>
             </Button>
 
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowComments(!showComments)}
-              className="flex items-center gap-2 text-gray-500 hover:text-blue-500"
+              onClick={handleToggleComments}
+              className="h-9 px-3 gap-2 rounded-full text-muted-foreground hover:text-foreground transition-all duration-200 active:scale-95"
             >
-              <MessageCircle className="h-5 w-5" />
-              <span className="text-sm">{comments.length}</span>
+              <MessageCircle className="h-4.5 w-4.5" />
+              <span className="text-sm font-medium">{commentCount}</span>
             </Button>
 
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onShare?.(post.id)}
-              className="flex items-center gap-2 text-gray-500 hover:text-green-500"
+              onClick={handleShare}
+              disabled={sharePending}
+              className="h-9 px-3 gap-2 rounded-full text-muted-foreground hover:text-foreground transition-all duration-200 active:scale-95"
             >
-              <Share2 className="h-5 w-5" />
+              {sharePending ? (
+                <Loader2 className="h-4.5 w-4.5 animate-spin" />
+              ) : (
+                <Share2 className="h-4.5 w-4.5" />
+              )}
+              <span className="text-sm font-medium">{shareCount}</span>
             </Button>
           </div>
 
@@ -791,189 +1119,365 @@ const PostCard: React.FC<PostCardProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleBookmark}
-            className={`flex items-center gap-2 ${
+            disabled={bookmarkPending}
+            className={cn(
+              "h-9 px-3 gap-2 rounded-full transition-all duration-200 active:scale-95",
               isBookmarked
-                ? "text-yellow-500"
-                : "text-gray-500 hover:text-yellow-500"
-            }`}
+                ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <Bookmark
-              className={`h-5 w-5 ${isBookmarked ? "fill-current" : ""}`}
-            />
+            {bookmarkPending ? (
+              <Loader2 className="h-4.5 w-4.5 animate-spin" />
+            ) : (
+              <Bookmark className={cn("h-4.5 w-4.5", isBookmarked && "fill-current")} />
+            )}
+            <span className="text-sm font-medium">{bookmarkCount}</span>
           </Button>
         </div>
       </div>
 
-      {/* Instagram-style Comments Section */}
       <AnimatePresence>
-        {showComments && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-gray-100 dark:border-gray-700"
+        {commentsOpen && (
+          <motion.section
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden border-t border-border/70"
           >
-            {/* Comments List */}
-            <div className="max-h-96 overflow-y-auto">
-              {isLoadingComments ? (
-                <div className="p-4 text-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500 mx-auto"></div>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Loading comments...
-                  </p>
-                </div>
-              ) : comments.length === 0 ? (
-                <div className="p-4 text-center">
-                  <MessageCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">
-                    No comments yet. Be the first to comment!
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3 p-4">
-                  {comments.map((comment) => (
-                    <motion.div
-                      key={comment._id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex items-start gap-3"
-                    >
-                      <Avatar className="h-8 w-8 flex-shrink-0">
-                        <AvatarImage src={comment.user.profilePicture} />
-                        <AvatarFallback className="text-xs">
-                          {comment.user.name?.charAt(0)?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className="font-semibold text-sm text-gray-900 dark:text-white cursor-pointer hover:underline"
-                            onClick={() =>
-                              onViewProfile?.(comment.user.username)
-                            }
-                          >
-                            {comment.user.name}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {formatTimeAgo(comment.createdAt)}
-                          </span>
-                        </div>
-
-                        <p
-                          className="text-sm text-gray-700 dark:text-gray-300 break-words"
-                          style={{
-                            wordBreak: "break-word",
-                            overflowWrap: "break-word",
-                          }}
-                        >
-                          {comment.content}
-                        </p>
-
-                        <div className="flex items-center gap-4 mt-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCommentLike(comment._id)}
-                            className={`h-6 px-2 text-xs ${
-                              comment.isLiked
-                                ? "text-red-500"
-                                : "text-gray-500 hover:text-red-500"
-                            }`}
-                          >
-                            <Heart
-                              className={`h-3 w-3 ${
-                                comment.isLiked ? "fill-current" : ""
-                              }`}
-                            />
-                            <span className="ml-1">{comment.likes || 0}</span>
-                          </Button>
-
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs text-gray-500 hover:text-blue-500"
-                          >
-                            Reply
-                          </Button>
-                        </div>
+            <div className="p-4 space-y-4 bg-card">
+              {commentsLoading ? (
+                <div className="space-y-4">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={`comment-skeleton-${index}`} className="flex items-start gap-3">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-4 w-full" />
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
+              ) : comments.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground text-sm">
+                  No comments yet. Start the conversation.
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-4">
+                    {visibleComments.map((comment) => {
+                      const repliesExpanded = expandedReplies.has(comment._id);
+                      const commentLikePending = Boolean(commentLikePendingMap[comment._id]);
+                      const replyPending = Boolean(replyPendingMap[comment._id]);
+
+                      return (
+                        <motion.div
+                          key={comment._id}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className={cn(
+                            "rounded-xl border p-3 transition-colors",
+                            highlightedThreadIds.has(comment._id)
+                              ? "border-social-300 bg-social-50/70"
+                              : "border-border bg-muted/10"
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <button
+                              type="button"
+                              className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              onClick={() =>
+                                handleProfileNavigation(comment.user.username, comment.user._id)
+                              }
+                              title={`Open @${comment.user.username} profile`}
+                            >
+                              <Avatar className="h-8 w-8 ring-1 ring-border transition-transform hover:scale-105">
+                                <AvatarImage src={comment.user.profilePicture} />
+                                <AvatarFallback>
+                                  {(comment.user.name || "U").charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            </button>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleProfileNavigation(comment.user.username, comment.user._id)
+                                  }
+                                  className="font-semibold text-foreground hover:underline"
+                                >
+                                  {comment.user.name}
+                                </button>
+                                <span>@{comment.user.username}</span>
+                                <span>•</span>
+                                <span>{formatTimeAgo(comment.createdAt)}</span>
+                              </div>
+
+                              <p className="mt-1 text-sm leading-relaxed break-words text-foreground/95">
+                                {comment.content}
+                              </p>
+
+                              <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={commentLikePending}
+                                  onClick={() => toggleCommentLike(comment._id)}
+                                  className={cn(
+                                    "h-7 px-2.5 gap-1 rounded-full text-xs",
+                                    comment.isLiked
+                                      ? "text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      : "text-muted-foreground"
+                                  )}
+                                >
+                                  {commentLikePending ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Heart
+                                      className={cn(
+                                        "h-3.5 w-3.5",
+                                        comment.isLiked && "fill-current"
+                                      )}
+                                    />
+                                  )}
+                                  {comment.likes}
+                                </Button>
+
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => openReplyComposer(comment._id)}
+                                  className="h-7 px-2.5 gap-1 rounded-full text-xs text-muted-foreground"
+                                >
+                                  <Reply className="h-3.5 w-3.5" />
+                                  Reply
+                                </Button>
+
+                                {comment.replies.length > 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => toggleReplies(comment._id)}
+                                    className="h-7 px-2.5 gap-1 rounded-full text-xs text-social-700"
+                                  >
+                                    {repliesExpanded ? (
+                                      <ChevronUp className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <ChevronDown className="h-3.5 w-3.5" />
+                                    )}
+                                    {repliesExpanded
+                                      ? "Hide replies"
+                                      : `${comment.replies.length} repl${comment.replies.length > 1 ? "ies" : "y"}`}
+                                  </Button>
+                                )}
+                              </div>
+
+                              <AnimatePresence>
+                                {repliesExpanded && comment.replies.length > 0 && (
+                                  <motion.div
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="mt-3 pl-3 border-l-2 border-border space-y-2"
+                                  >
+                                    {comment.replies.map((reply) => (
+                                      <motion.div
+                                        key={reply._id}
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        className={cn(
+                                          "rounded-lg border px-3 py-2",
+                                          highlightedThreadIds.has(reply._id)
+                                            ? "border-social-300 bg-social-50/70"
+                                            : "border-border bg-background"
+                                        )}
+                                      >
+                                        <div className="flex items-start gap-2.5">
+                                          <button
+                                            type="button"
+                                            className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                            onClick={() =>
+                                              handleProfileNavigation(reply.user.username, reply.user._id)
+                                            }
+                                            title={`Open @${reply.user.username} profile`}
+                                          >
+                                            <Avatar className="h-7 w-7 ring-1 ring-border transition-transform hover:scale-105">
+                                              <AvatarImage src={reply.user.profilePicture} />
+                                              <AvatarFallback>
+                                                {(reply.user.name || "U").charAt(0).toUpperCase()}
+                                              </AvatarFallback>
+                                            </Avatar>
+                                          </button>
+
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleProfileNavigation(
+                                                    reply.user.username,
+                                                    reply.user._id
+                                                  )
+                                                }
+                                                className="font-semibold text-foreground hover:underline"
+                                              >
+                                                {reply.user.name}
+                                              </button>
+                                              <span>@{reply.user.username}</span>
+                                              <span>•</span>
+                                              <span>{formatTimeAgo(reply.createdAt)}</span>
+                                            </div>
+                                            <p className="mt-1 text-sm break-words">{reply.content}</p>
+                                          </div>
+                                        </div>
+                                      </motion.div>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+
+                              <AnimatePresence>
+                                {activeReplyCommentId === comment._id && (
+                                  <motion.div
+                                    ref={(node) => {
+                                      replyComposerRefs.current[comment._id] = node;
+                                    }}
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.18 }}
+                                    className="mt-3 rounded-xl border border-border bg-background p-3"
+                                  >
+                                    <Textarea
+                                      value={replyDrafts[comment._id] || ""}
+                                      onChange={(event) =>
+                                        setReplyDrafts((prev) => ({
+                                          ...prev,
+                                          [comment._id]: event.target.value,
+                                        }))
+                                      }
+                                      placeholder={`Reply to ${comment.user.name}...`}
+                                      className="min-h-[72px]"
+                                    />
+                                    <div className="mt-2 flex justify-end gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setActiveReplyCommentId(null)}
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        disabled={
+                                          replyPending ||
+                                          !(replyDrafts[comment._id] || "").trim()
+                                        }
+                                        onClick={() => handleReplySubmit(comment._id)}
+                                      >
+                                        {replyPending ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <>
+                                            <Send className="h-4 w-4 mr-1.5" />
+                                            Reply
+                                          </>
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+
+                  {comments.length > 3 && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowAllComments((prev) => !prev)}
+                        className="text-xs"
+                      >
+                        {showAllComments
+                          ? "Show fewer comments"
+                          : `Show ${comments.length - 3} more comments`}
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
-            </div>
 
-            {/* Comment Input */}
-            <div className="p-4 border-t border-gray-100 dark:border-gray-700">
-              <div className="flex items-center gap-2">
-                <Avatar className="h-8 w-8 flex-shrink-0">
-                  <AvatarImage src={user?.profilePicture} />
-                  <AvatarFallback className="text-xs">
-                    {user?.name?.charAt(0)?.toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+              <div className="rounded-xl border border-border bg-muted/10 p-3">
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => handleProfileNavigation(user?.username, user?.id)}
+                    title="Open your profile"
+                  >
+                    <Avatar className="h-8 w-8 ring-1 ring-border transition-transform hover:scale-105">
+                      <AvatarImage src={user?.profilePicture} />
+                      <AvatarFallback>
+                        {(user?.name || "U").charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </button>
 
-                <div className="flex-1 flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-full px-3 py-2">
-                  <Input
-                    ref={commentInputRef}
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Add a comment..."
-                    className="flex-1 border-0 bg-transparent focus:ring-0 text-sm"
-                    onKeyPress={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleComment();
-                      }
-                    }}
-                  />
+                  <div className="flex-1">
+                    <Textarea
+                      value={commentDraft}
+                      onChange={(event) => setCommentDraft(event.target.value)}
+                      placeholder="Write a comment..."
+                      className="min-h-[84px]"
+                      onKeyDown={(event) => {
+                        if (
+                          event.key === "Enter" &&
+                          (event.ctrlKey || event.metaKey)
+                        ) {
+                          event.preventDefault();
+                          void handleCommentSubmit();
+                        }
+                      }}
+                    />
 
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-gray-500 hover:text-blue-500"
-                    >
-                      <Smile className="h-4 w-4" />
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-gray-500 hover:text-blue-500"
-                    >
-                      <Image className="h-4 w-4" />
-                    </Button>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 text-gray-500 hover:text-blue-500"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </Button>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground">
+                        Press Ctrl/Cmd + Enter to post quickly
+                      </p>
+                      <Button
+                        size="sm"
+                        onClick={handleCommentSubmit}
+                        disabled={commentPending || !commentDraft.trim()}
+                        className="rounded-full"
+                      >
+                        {commentPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Send className="h-4 w-4 mr-1.5" />
+                            Comment
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-
-                <Button
-                  size="sm"
-                  onClick={handleComment}
-                  disabled={!newComment.trim() || isSubmitting}
-                  className="bg-blue-500 hover:bg-blue-600 text-white"
-                >
-                  {isSubmitting ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                </Button>
               </div>
             </div>
-          </motion.div>
+          </motion.section>
         )}
       </AnimatePresence>
-    </motion.div>
+    </motion.article>
   );
 };
 

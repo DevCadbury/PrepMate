@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "./ui/button";
+import { apiClient } from "../lib/apiClient";
 
 const TestGoogleAuth: React.FC = () => {
   const [status, setStatus] = useState<string>("");
@@ -7,7 +8,7 @@ const TestGoogleAuth: React.FC = () => {
   const handleGoogleSignIn = () => {
     setStatus("Redirecting to Google OAuth...");
     console.log("Starting Google OAuth flow...");
-    window.location.href = "http://localhost:5000/api/auth/google";
+    window.location.href = apiClient.getApiUrl("/auth/google");
   };
 
   return (
