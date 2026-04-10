@@ -49,7 +49,6 @@ import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import AICompanionPage from "./pages/AICompanionPage";
 import FollowRequestsPage from "./pages/FollowRequestsPage";
-import AdminControlCenterPage from "./pages/AdminControlCenterPage";
 
 interface User {
   id: string;
@@ -140,7 +139,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
     if (path.startsWith("/trending")) return "trending";
     if (path.startsWith("/questions")) return "questions";
     if (path.startsWith("/coding")) return "coding";
-    if (path.startsWith("/admin-console")) return "admin-console";
     if (path.startsWith("/ai-companion")) return "ai-companion";
     return "feed"; // default
   };
@@ -806,7 +804,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         navigate("/ai-companion");
         break;
       case "admin-console":
-        navigate("/admin-console");
+        navigate("/admin-console/overview");
         break;
       case "profile":
         navigate("/profile");
@@ -837,8 +835,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         return <FollowRequestsPage />;
       case "ai-companion":
         return <AICompanionPage user={user} />;
-      case "admin-console":
-        return <AdminControlCenterPage user={user} />;
       case "profile":
         return <ProfilePage username={urlParams.username} />;
       case "settings":
@@ -1149,7 +1145,7 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
                         {String(user?.role || "").toLowerCase() === "admin" && (
                           <DropdownMenuItem
                             className="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/60 dark:hover:bg-gray-800/60 hover:shadow-md cursor-pointer transition-all duration-200 group border border-transparent hover:border-sky-200/60 dark:hover:border-sky-600/40"
-                            onClick={() => navigate("/admin-console")}
+                            onClick={() => navigate("/admin-console/overview")}
                           >
                             <div className="w-5 h-5 text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors">
                               <ShieldCheckIcon className="w-5 h-5" />

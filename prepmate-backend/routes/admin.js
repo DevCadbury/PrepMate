@@ -9,6 +9,7 @@ const Post = require("../models/Post");
 const Message = require("../models/Message");
 const CodingProblem = require("../models/CodingProblem");
 const SupportTicket = require("../models/SupportTicket");
+const Notification = require("../models/Notification");
 const { authenticateToken, authorizeRoles } = require("../middleware/auth");
 
 const router = express.Router();
@@ -217,6 +218,177 @@ router.get(
       });
     } catch (error) {
       console.error("Admin overview error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+router.get(
+  "/insights",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  async (req, res) => {
+    try {
+      const now = Date.now();
+      const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+      const [followAggregate = {}, totalNotifications, unreadNotifications, systemNotifications, notificationsLast24h, aiConfiguredUsers, aiValidUsers, subscriptionAggregation, pendingPostReports, reportedMessages, postModerationActions, chatModerationActions] =
+        await Promise.all([
+          User.aggregate([
+            {
+              $project: {
+                incomingRequestsCount: {
+                  $size: { $ifNull: ["$followRequests", []] },
+                },
+                outgoingRequestsCount: {
+                  $size: { $ifNull: ["$pendingFollowRequests", []] },
+                },
+                actionsLast7dCount: {
+                  $size: {
+                    $filter: {
+                      input: { $ifNull: ["$followRequestActions", []] },
+                      as: "action",
+                      cond: {
+                        $gte: ["$$action.createdAt", sevenDaysAgo],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                pendingIncomingRequests: { $sum: "$incomingRequestsCount" },
+                pendingOutgoingRequests: { $sum: "$outgoingRequestsCount" },
+                usersWithIncomingRequests: {
+                  $sum: {
+                    $cond: [{ $gt: ["$incomingRequestsCount", 0] }, 1, 0],
+                  },
+                },
+                usersWithOutgoingRequests: {
+                  $sum: {
+                    $cond: [{ $gt: ["$outgoingRequestsCount", 0] }, 1, 0],
+                  },
+                },
+                actionsLast7d: { $sum: "$actionsLast7dCount" },
+              },
+            },
+          ]).then((rows) => rows[0] || {}),
+          Notification.countDocuments(),
+          Notification.countDocuments({ read: false }),
+          Notification.countDocuments({ category: "system" }),
+          Notification.countDocuments({ createdAt: { $gte: oneDayAgo } }),
+          User.countDocuments({
+            "aiCompanion.geminiApiKey": { $exists: true, $ne: "" },
+          }),
+          User.countDocuments({ "aiCompanion.isApiKeyValid": true }),
+          User.aggregate([
+            {
+              $group: {
+                _id: { $ifNull: ["$subscription", "free"] },
+                count: { $sum: 1 },
+              },
+            },
+          ]),
+          Post.countDocuments({ "reports.status": "pending" }),
+          Message.find({ "adminLogs.action": "reported" }).select("adminLogs"),
+          Post.aggregate([
+            {
+              $unwind: {
+                path: "$reports",
+                preserveNullAndEmptyArrays: false,
+              },
+            },
+            {
+              $match: {
+                "reports.reviewedAt": { $gte: oneDayAgo },
+              },
+            },
+            {
+              $count: "count",
+            },
+          ]),
+          Message.aggregate([
+            {
+              $unwind: {
+                path: "$adminLogs",
+                preserveNullAndEmptyArrays: false,
+              },
+            },
+            {
+              $match: {
+                "adminLogs.action": {
+                  $in: ["resolved", "dismissed", "blocked"],
+                },
+                "adminLogs.timestamp": { $gte: oneDayAgo },
+              },
+            },
+            {
+              $count: "count",
+            },
+          ]),
+        ]);
+
+      const subscriptionCounts = {
+        free: 0,
+        basic: 0,
+        premium: 0,
+        enterprise: 0,
+      };
+
+      subscriptionAggregation.forEach((entry) => {
+        const key = String(entry._id || "free").toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(subscriptionCounts, key)) {
+          subscriptionCounts[key] = entry.count;
+        }
+      });
+
+      const openChatReports = reportedMessages.reduce((count, message) => {
+        const state = resolveChatReportState(message);
+        return state?.status === "open" ? count + 1 : count;
+      }, 0);
+
+      const postModerationActions24h = postModerationActions?.[0]?.count || 0;
+      const chatModerationActions24h = chatModerationActions?.[0]?.count || 0;
+
+      res.json({
+        success: true,
+        data: {
+          follow: {
+            pendingIncomingRequests: followAggregate.pendingIncomingRequests || 0,
+            pendingOutgoingRequests: followAggregate.pendingOutgoingRequests || 0,
+            usersWithIncomingRequests: followAggregate.usersWithIncomingRequests || 0,
+            usersWithOutgoingRequests: followAggregate.usersWithOutgoingRequests || 0,
+            actionsLast7d: followAggregate.actionsLast7d || 0,
+          },
+          notifications: {
+            total: totalNotifications,
+            unread: unreadNotifications,
+            system: systemNotifications,
+            createdLast24h: notificationsLast24h,
+          },
+          ai: {
+            configuredUsers: aiConfiguredUsers,
+            validUsers: aiValidUsers,
+          },
+          subscriptions: subscriptionCounts,
+          audit: {
+            pendingPostReports,
+            openChatReports,
+            postModerationActions24h,
+            chatModerationActions24h,
+            moderationActions24h:
+              postModerationActions24h + chatModerationActions24h,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Admin insights error:", error);
       res.status(500).json({
         success: false,
         message: "Internal server error",

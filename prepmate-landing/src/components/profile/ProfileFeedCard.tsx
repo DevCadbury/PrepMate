@@ -14,7 +14,8 @@ import {
   Heart,
   Bookmark,
 } from "lucide-react";
-import { apiClient } from "../../lib/apiClient";
+import { commentsApi } from "../../services/api/commentsApi";
+import { socialApi } from "../../services/api/socialApi";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -303,13 +304,8 @@ const ProfileFeedCard: React.FC<ProfileFeedCardProps> = memo(({
     if (loadingComments) return;
     setLoadingComments(true);
     try {
-      const res = await apiClient.fetch(`/comments/post/${post._id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setComments(data.data?.comments || data.comments || []);
-      }
+      const commentsPayload = await commentsApi.getPostComments(post._id);
+      setComments(commentsPayload);
     } catch (err) {
       console.error("Failed to fetch comments:", err);
     } finally {
@@ -319,9 +315,9 @@ const ProfileFeedCard: React.FC<ProfileFeedCardProps> = memo(({
 
   useEffect(() => {
     if (showComments && comments.length === 0) {
-      fetchComments();
+      void fetchComments();
     }
-  }, [showComments]);
+  }, [comments.length, fetchComments, showComments]);
 
   // ─── Optimistic Like ────────────────────────────────────────────────────
   const handleLike = async () => {
@@ -338,14 +334,7 @@ const ProfileFeedCard: React.FC<ProfileFeedCardProps> = memo(({
     }
 
     try {
-      const res = await apiClient.fetch(`/social/posts/${post._id}/like`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) throw new Error("Failed");
+      await socialApi.togglePostLike(post._id);
     } catch {
       // Rollback
       setIsLiked(prevLiked);
@@ -373,22 +362,20 @@ const ProfileFeedCard: React.FC<ProfileFeedCardProps> = memo(({
     setCommentText("");
 
     try {
-      const res = await apiClient.fetch(`/comments/post/${post._id}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content: optimisticComment.content }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Replace optimistic with real
-        setComments((prev) => prev.map((c) => (c._id === optimisticComment._id ? { ...data.data?.comment || data.comment, isNew: true } : c)));
-        onPostUpdated?.();
-      } else {
+      const createdComment = await commentsApi.addComment(post._id, optimisticComment.content);
+      if (!createdComment) {
         throw new Error("Failed");
       }
+
+      // Replace optimistic with real
+      setComments((prev) =>
+        prev.map((c) =>
+          c._id === optimisticComment._id
+            ? { ...createdComment, isNew: true }
+            : c
+        )
+      );
+      onPostUpdated?.();
     } catch {
       // Rollback
       setComments((prev) => prev.filter((c) => c._id !== optimisticComment._id));
@@ -414,14 +401,10 @@ const ProfileFeedCard: React.FC<ProfileFeedCardProps> = memo(({
       )
     );
     try {
-      const res = await apiClient.fetch(`/comments/${commentId}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-      });
-      if (!res.ok) throw new Error();
+      await commentsApi.toggleCommentLike(commentId);
     } catch {
       // Rollback: refetch
-      fetchComments();
+      void fetchComments();
     }
   };
 
@@ -441,27 +424,25 @@ const ProfileFeedCard: React.FC<ProfileFeedCardProps> = memo(({
     );
 
     try {
-      const res = await apiClient.fetch(`/comments/${commentId}/reply`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const realReply = data.data?.reply || data.reply;
-        setComments((prev) =>
-          prev.map((c) =>
-            c._id === commentId
-              ? { ...c, replies: c.replies.map((r) => (r._id === optimisticReply._id ? { ...realReply, user: optimisticReply.user } : r)) }
-              : c
-          )
-        );
-      } else {
+      const realReply = await commentsApi.addReply(commentId, content);
+      if (!realReply) {
         throw new Error();
       }
+
+      setComments((prev) =>
+        prev.map((c) =>
+          c._id === commentId
+            ? {
+                ...c,
+                replies: c.replies.map((r) =>
+                  r._id === optimisticReply._id
+                    ? { ...realReply, user: optimisticReply.user }
+                    : r
+                ),
+              }
+            : c
+        )
+      );
     } catch {
       setComments((prev) =>
         prev.map((c) =>

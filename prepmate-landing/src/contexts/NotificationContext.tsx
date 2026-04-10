@@ -8,11 +8,11 @@ import React, {
   ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
-import { apiClient } from "../lib/apiClient";
+import { notificationsApi } from "../services/api/notificationsApi";
 
 interface Notification {
   id: string;
-  type: "like" | "comment" | "follow" | "mention" | "achievement";
+  type: string;
   message: string;
   userId: string;
   postId?: string;
@@ -69,21 +69,10 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
 
     setIsLoading(true);
     try {
-      const response = await apiClient.fetch(
-        "/social/notifications",
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.notifications || []);
-        setUnreadCount(data.unreadCount || 0);
-        lastFetchAtRef.current = Date.now();
-      }
+      const data = await notificationsApi.getNotifications({ force });
+      setNotifications(data.notifications || []);
+      setUnreadCount(data.unreadCount || 0);
+      lastFetchAtRef.current = Date.now();
     } catch (err) {
       console.error("Error fetching notifications:", err);
     } finally {
@@ -94,26 +83,15 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const response = await apiClient.fetch(
-        `/social/notifications/${notificationId}/read`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
+      await notificationsApi.markAsRead(notificationId);
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === notificationId
+            ? { ...notification, isRead: true }
+            : notification
+        )
       );
-
-      if (response.ok) {
-        setNotifications((prev) =>
-          prev.map((notification) =>
-            notification.id === notificationId
-              ? { ...notification, isRead: true }
-              : notification
-          )
-        );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
-      }
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
       console.error("Error marking notification as read:", err);
     }
@@ -121,22 +99,11 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({
 
   const markAllAsRead = async () => {
     try {
-      const response = await apiClient.fetch(
-        "/social/notifications/read-all",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
+      await notificationsApi.markAllAsRead();
+      setNotifications((prev) =>
+        prev.map((notification) => ({ ...notification, isRead: true }))
       );
-
-      if (response.ok) {
-        setNotifications((prev) =>
-          prev.map((notification) => ({ ...notification, isRead: true }))
-        );
-        setUnreadCount(0);
-      }
+      setUnreadCount(0);
     } catch (err) {
       console.error("Error marking all notifications as read:", err);
     }

@@ -36,6 +36,7 @@ import TrendingPage from "./components/dashboards/pages/TrendingPage";
 import QuestionsPage from "./components/dashboards/pages/QuestionsPage";
 import CodingPage from "./components/dashboards/pages/CodingPage";
 import AICompanionPage from "./components/dashboards/pages/AICompanionPage";
+import AdminConsoleRoutes from "./components/admin-console/AdminConsoleRoutes";
 
 function App() {
   const [showSignIn, setShowSignIn] = useState(false);
@@ -94,7 +95,7 @@ function App() {
             element={
               <AdminLogin
                 onLogin={() =>
-                  (window.location.href = "/modern-admin-dashboard")
+                  (window.location.href = "/admin-console/overview")
                 }
               />
             }
@@ -266,10 +267,10 @@ function App() {
             }
           />
           <Route
-            path="/admin-console"
+            path="/admin-console/*"
             element={
               <ProtectedRoute requiredRole="admin">
-                <StudentDashboard />
+                <AdminConsoleRoutes />
               </ProtectedRoute>
             }
           />

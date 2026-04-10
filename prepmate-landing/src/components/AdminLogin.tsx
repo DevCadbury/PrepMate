@@ -9,6 +9,7 @@ import {
   CheckCircleIcon,
 } from "@heroicons/react/24/outline";
 import { apiClient } from "../lib/apiClient";
+import { authApi } from "../services/api/authApi";
 
 interface AdminLoginProps {
   onLogin: () => void;
@@ -29,33 +30,19 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
     setSuccess("");
 
     try {
-      const response = await apiClient.fetch(
-        "/auth/admin/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email, password }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        localStorage.setItem("adminToken", data.data.token);
-        localStorage.setItem("adminData", JSON.stringify(data.data.user));
-        setSuccess("Login successful! Redirecting...");
-        setTimeout(() => {
-          onLogin();
-        }, 1000);
-      } else {
-        setError(
-          data.message || "Login failed. Please check your credentials."
-        );
-      }
+      const data = await authApi.adminLogin(email, password);
+      localStorage.setItem("adminToken", data.token);
+      localStorage.setItem("adminData", JSON.stringify(data.user));
+      setSuccess("Login successful! Redirecting...");
+      setTimeout(() => {
+        onLogin();
+      }, 1000);
     } catch (error) {
-      setError("Network error. Please try again.");
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Network error. Please try again.";
+      setError(message);
     } finally {
       setIsLoading(false);
     }

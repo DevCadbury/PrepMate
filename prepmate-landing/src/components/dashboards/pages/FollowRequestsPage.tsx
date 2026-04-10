@@ -18,23 +18,12 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { apiClient } from "../../../lib/apiClient";
-
-interface FollowRequestUser {
-  _id: string;
-  name: string;
-  username: string;
-  profilePicture?: string;
-}
-
-interface FollowRequestAction {
-  _id: string;
-  requester?: FollowRequestUser;
-  actionBy?: FollowRequestUser;
-  action: "accepted" | "rejected" | "blocked";
-  source: "single" | "bulk";
-  createdAt: string;
-}
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue";
+import {
+  followRequestsApi,
+  FollowRequestAction,
+  FollowRequestUser,
+} from "../../../services/api/followRequestsApi";
 
 const formatTimeAgo = (dateString: string) => {
   const date = new Date(dateString);
@@ -60,6 +49,7 @@ const FollowRequestsPage: React.FC = () => {
 
   const [query, setQuery] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const debouncedQuery = useDebouncedValue(query, 180);
 
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -73,10 +63,6 @@ const FollowRequestsPage: React.FC = () => {
   useEffect(() => {
     showErrorRef.current = showError;
   }, [showError]);
-
-  const buildAuthHeaders = useCallback(() => ({
-    Authorization: `Bearer ${localStorage.getItem("token")}`,
-  }), []);
 
   const fetchFollowRequestData = useCallback(async ({
     silent = false,
@@ -105,44 +91,11 @@ const FollowRequestsPage: React.FC = () => {
     }
 
     try {
-      const [requestsResponse, historyResponse, blockedResponse] = await Promise.all([
-        apiClient.fetch("/users/follow-requests", {
-          headers: buildAuthHeaders(),
-        }),
-        apiClient.fetch("/users/follow-requests/history?limit=40", {
-          headers: buildAuthHeaders(),
-        }),
-        apiClient.fetch("/users/blocked", {
-          headers: buildAuthHeaders(),
-        }),
-      ]);
+      const bundle = await followRequestsApi.fetchBundle({ force });
 
-      const requestsPayload = await requestsResponse.json().catch(() => ({}));
-      const historyPayload = await historyResponse.json().catch(() => ({}));
-      const blockedPayload = await blockedResponse.json().catch(() => ({}));
-
-      if (!requestsResponse.ok) {
-        throw new Error(requestsPayload?.message || "Failed to fetch follow requests");
-      }
-
-      const incomingRequests = Array.isArray(requestsPayload?.data?.followRequests)
-        ? requestsPayload.data.followRequests
-        : [];
-      const incomingBlockedFromRequests = Array.isArray(requestsPayload?.data?.blockedUsers)
-        ? requestsPayload.data.blockedUsers
-        : [];
-      const incomingHistory = Array.isArray(historyPayload?.data?.actions)
-        ? historyPayload.data.actions
-        : [];
-      const incomingBlocked = blockedResponse.ok
-        ? Array.isArray(blockedPayload?.data?.blockedUsers)
-          ? blockedPayload.data.blockedUsers
-          : []
-        : incomingBlockedFromRequests;
-
-      setRequests(incomingRequests);
-      setHistoryActions(incomingHistory);
-      setBlockedUsers(incomingBlocked);
+      setRequests(bundle.followRequests);
+      setHistoryActions(bundle.historyActions);
+      setBlockedUsers(bundle.blockedUsers);
     } catch (err: any) {
       showErrorRef.current(
         "Unable to load follow requests",
@@ -154,24 +107,24 @@ const FollowRequestsPage: React.FC = () => {
       setRefreshing(false);
       fetchInFlightRef.current = false;
     }
-  }, [buildAuthHeaders]);
+  }, []);
 
   useEffect(() => {
     void fetchFollowRequestData({ force: true });
   }, [fetchFollowRequestData]);
 
   const filteredRequests = useMemo(() => {
-    const term = query.trim().toLowerCase();
+    const term = debouncedQuery.trim().toLowerCase();
     if (!term) return requests;
     return requests.filter(
       (request) =>
         request.name?.toLowerCase().includes(term) ||
         request.username?.toLowerCase().includes(term)
     );
-  }, [query, requests]);
+  }, [debouncedQuery, requests]);
 
   const filteredHistory = useMemo(() => {
-    const term = query.trim().toLowerCase();
+    const term = debouncedQuery.trim().toLowerCase();
     if (!term) return historyActions;
 
     return historyActions.filter((item) => {
@@ -179,7 +132,7 @@ const FollowRequestsPage: React.FC = () => {
       const requesterUsername = item.requester?.username?.toLowerCase() || "";
       return requesterName.includes(term) || requesterUsername.includes(term);
     });
-  }, [historyActions, query]);
+  }, [debouncedQuery, historyActions]);
 
   const toggleSelection = (userId: string) => {
     setSelectedUserIds((prev) => {
@@ -221,20 +174,7 @@ const FollowRequestsPage: React.FC = () => {
   const handleSingleAction = async (requesterId: string, action: "accept" | "reject") => {
     setActionLoading(requesterId);
     try {
-      const endpoint =
-        action === "accept"
-          ? `/users/accept-follow-request/${requesterId}`
-          : `/users/reject-follow-request/${requesterId}`;
-
-      const response = await apiClient.fetch(endpoint, {
-        method: "POST",
-        headers: buildAuthHeaders(),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || `Failed to ${action} request`);
-      }
+      await followRequestsApi.actOnRequest(requesterId, action);
 
       removeRequestLocally(requesterId);
       success(action === "accept" ? "Request accepted" : "Request rejected");
@@ -261,19 +201,7 @@ const FollowRequestsPage: React.FC = () => {
 
     setActionLoading("bulk");
     try {
-      const response = await apiClient.fetch("/users/follow-requests/bulk", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...buildAuthHeaders(),
-        },
-        body: JSON.stringify({ action, userIds }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || `Bulk ${action} failed`);
-      }
+      const payload = await followRequestsApi.bulkAction(action, userIds);
 
       const processedIds = Array.isArray(payload?.data?.userIds)
         ? payload.data.userIds
@@ -320,15 +248,7 @@ const FollowRequestsPage: React.FC = () => {
   const handleBlockRequester = async (requester: FollowRequestUser) => {
     setActionLoading(`block-${requester._id}`);
     try {
-      const response = await apiClient.fetch(`/users/block/${requester._id}`, {
-        method: "POST",
-        headers: buildAuthHeaders(),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to block user");
-      }
+      await followRequestsApi.blockUser(requester._id);
 
       removeRequestLocally(requester._id);
       setBlockedUsers((prev) => {
@@ -350,18 +270,7 @@ const FollowRequestsPage: React.FC = () => {
   const handleUnblock = async (userToUnblock: FollowRequestUser) => {
     setActionLoading(`unblock-${userToUnblock._id}`);
     try {
-      const response = await apiClient.fetch(
-        `/users/unblock/${userToUnblock._id}`,
-        {
-          method: "POST",
-          headers: buildAuthHeaders(),
-        }
-      );
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to unblock user");
-      }
+      await followRequestsApi.unblockUser(userToUnblock._id);
 
       setBlockedUsers((prev) => prev.filter((user) => user._id !== userToUnblock._id));
       success(`Unblocked @${userToUnblock.username}`);

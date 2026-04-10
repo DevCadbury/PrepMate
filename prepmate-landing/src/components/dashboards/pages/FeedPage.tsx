@@ -23,7 +23,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "../../ui/dialog";
-import { apiClient } from "../../../lib/apiClient";
+import { feedApi } from "../../../services/api/feedApi";
 
 interface FeedUser {
   _id: string;
@@ -144,8 +144,9 @@ const FeedPage: React.FC = () => {
 
   const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const fetchPosts = useCallback(async (options?: { silent?: boolean }) => {
+  const fetchPosts = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
     const silent = options?.silent === true;
+    const force = options?.force === true;
 
     if (silent) {
       setRefreshing(true);
@@ -155,20 +156,7 @@ const FeedPage: React.FC = () => {
     setError(null);
 
     try {
-      const response = await apiClient.fetch("/social/posts/feed", {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to fetch feed posts");
-      }
-
-      const incomingPosts = Array.isArray(payload?.data?.posts)
-        ? payload.data.posts
-        : [];
+      const incomingPosts = await feedApi.getFeedPosts({ force });
       setPosts(incomingPosts);
       setVisibleCount((prev) =>
         Math.min(Math.max(prev, INITIAL_VISIBLE_POSTS), Math.max(incomingPosts.length, INITIAL_VISIBLE_POSTS))
@@ -321,20 +309,7 @@ const FeedPage: React.FC = () => {
     if (!postToDelete) return;
 
     try {
-      const response = await apiClient.fetch(
-        `/social/posts/${postToDelete}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-        }
-      );
-
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to delete post");
-      }
+      await feedApi.deletePost(postToDelete);
 
       setPosts((prev) => prev.filter((post) => post._id !== postToDelete));
       success("Post deleted", "Your post has been removed.");
@@ -352,13 +327,15 @@ const FeedPage: React.FC = () => {
 
   const handlePostCreated = useCallback(
     (newPost: any, meta?: PostCreatedMeta) => {
+      feedApi.clearCache();
+
       if (meta?.removeId) {
         setPosts((prev) => prev.filter((post) => post._id !== meta.removeId));
         return;
       }
 
       if (!newPost?._id || !newPost?.user) {
-        void fetchPosts({ silent: true });
+        void fetchPosts({ silent: true, force: true });
         return;
       }
 
@@ -446,7 +423,7 @@ const FeedPage: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => void fetchPosts({ silent: true })}
+                  onClick={() => void fetchPosts({ silent: true, force: true })}
                   disabled={refreshing || loading}
                   className="rounded-full border-border/80"
                 >
@@ -505,7 +482,7 @@ const FeedPage: React.FC = () => {
                   variant="outline"
                   size="sm"
                   className="border-red-300 text-red-700 hover:bg-red-100"
-                  onClick={() => void fetchPosts()}
+                  onClick={() => void fetchPosts({ force: true })}
                 >
                   Retry
                 </Button>
