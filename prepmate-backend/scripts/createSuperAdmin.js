@@ -23,18 +23,15 @@ const createSuperAdmin = async () => {
     // Create superadmin user
     const superAdmin = await User.create({
       name: 'Super Admin',
+      username: 'superadmin',
       email: 'admin@prepmate.com',
       password: 'admin123',
       role: 'admin',
+      adminRole: 'superadmin',
       isActive: true,
-      isEmailVerified: true,
+      emailVerified: true,
       subscription: 'premium',
-      stats: {
-        questionsSolved: 0,
-        averageScore: 0,
-        streakDays: 0,
-        totalTime: 0,
-      },
+      permissions: ['*'],
     });
 
     logger.info('Superadmin created successfully');

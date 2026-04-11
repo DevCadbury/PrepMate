@@ -10,21 +10,11 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
-// Import routes
-const authRoutes = require("./routes/auth");
-const adminRoutes = require("./routes/admin");
-const studentRoutes = require("./routes/student");
-const teacherRoutes = require("./routes/teacher");
-const socialRoutes = require("./routes/social");
-const profileRoutes = require("./routes/profile");
-const usersRoutes = require("./routes/users");
-const notificationsRoutes = require("./routes/notifications");
-const commentsRoutes = require("./routes/comments");
-const chatRoutes = require("./routes/chat");
-const supportRoutes = require("./routes/support");
-const healthRoutes = require("./routes/health");
-const aiRoutes = require("./routes/ai");
-const codingRoutes = require("./routes/coding");
+const {
+  apiRoutes,
+  healthRoutes,
+  healthRoutePaths,
+} = require("./config/routeRegistry");
 
 // Import utilities
 const logger = require("./utils/logger");
@@ -132,26 +122,14 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/student", studentRoutes);
-app.use("/api/teacher", teacherRoutes);
-app.use("/api/social", socialRoutes);
-// Profile routes - uncommented to fix profile update functionality
-app.use("/api/profile", profileRoutes);
-app.use("/api/users", usersRoutes);
-// Notifications routes - uncommented to fix notification fetching
-app.use("/api/notifications", notificationsRoutes);
-app.use("/api/social/notifications", notificationsRoutes);
-app.use("/api/comments", commentsRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/support", supportRoutes);
-app.use("/api/ai", aiRoutes);
-app.use("/api/coding", codingRoutes);
+apiRoutes.forEach(({ path: routePath, router }) => {
+  app.use(routePath, router);
+});
 
 // Health check routes
-app.use("/health", healthRoutes);
-app.use("/api/health", healthRoutes);
+healthRoutePaths.forEach((routePath) => {
+  app.use(routePath, healthRoutes);
+});
 
 // Serve health dashboard
 app.get("/health-dashboard", (req, res) => {

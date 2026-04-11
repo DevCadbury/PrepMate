@@ -7503,3 +7503,401 @@
 {"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:39:00"}
 {"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:39:00"}
 {"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:39:00"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-08 22:41:43"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User Eddie Martin left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User Eddie Martin left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User Eddie Martin joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User Chaman kumar left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User Chaman kumar left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-08 22:41:45"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-08 22:57:39"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-08 23:14:22"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 00:26:49"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:00"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:00"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:00"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:00"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:16"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:16"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:18"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:18"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:18"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:18"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:21"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:21"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:28"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:28"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:28"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:28"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:28"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:28"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:29"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:29"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:29"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:29"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:38"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:38"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:38"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:38"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:38"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:38"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:40"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:40"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:40"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:40"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:40"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:40"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:41"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:41"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:42"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:42"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:42"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:42"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:43"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:43"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:44"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:44"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:44"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:44"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:44"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:44"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:45"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:27:45"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:45"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:27:45"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:52"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:52"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:56"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:27:57"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:32:09"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:32:11"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:36:23"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:36:24"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:40:19"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 00:40:19"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 00:40:19"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 00:40:19"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:06"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 01:10:06"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:06"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:10:06"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:12"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:12"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:14"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:14"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 01:10:14"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:10:14"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:20"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:20"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:43"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:10:49"}
+{"level":"info","message":"Attempting to validate API key:","service":"prepmate-backend","timestamp":"2026-04-09 01:10:56"}
+{"level":"info","message":"Skipping API validation in development mode","service":"prepmate-backend","timestamp":"2026-04-09 01:10:56"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:12:26"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:12:26"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 01:12:26"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:12:26"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:12:33"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:12:33"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:13:01"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:13:01"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:13:01"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 01:13:01"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:13:03"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:13:03"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:14:13"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:14:13"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:14:13"}
+{"level":"info","message":"User Chaman kumar joined post 69d63e292606869bcf6f177d","service":"prepmate-backend","timestamp":"2026-04-09 01:14:13"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:14:22"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:14:24"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:13"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:16:13"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:25"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:25"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:25"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:16:25"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:16:25"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:30"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:30"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:31"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:16:31"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:31"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:31"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:16:31"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:16:31"}
+{"level":"info","message":"User Chaman kumar commented on post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:16:37"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:50"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:50"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:50"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:56"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:16:56"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:56"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:16:56"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:16:56"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 01:16:56"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:18:41"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:18:41"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:18:41"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:19:35"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:19:35"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:20:13"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:20:13"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:20:13"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:20:13"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:20:15"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:20:15"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:32"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:32"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:32:32"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:32:32"}
+{"level":"info","message":"User Chaman kumar likeed post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:32:41"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:42"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:42"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:43"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:32:43"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:43"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:32:43"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:46"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:32:46"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:33:12"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:13"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:14"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:33:38"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:33:41"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:41"}
+{"level":"info","message":"User Chaman kumar left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar left chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:42"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:43"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 01:33:43"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:33:48"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:43:29"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:43:29"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:43:29"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:43:29"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:43:31"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:43:31"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:19"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:19"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:44:19"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:44:19"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:22"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:22"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:26"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:31"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:32"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:32"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 01:44:32"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 01:44:32"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:47"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 01:44:47"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:51:30"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:51:30"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:51:40"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:51:40"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:51:50"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:51:51"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:52:00"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:00"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:00"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:00"}
+{"level":"error","message":"Token verification error: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net","reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":"7fffffff0000000000000023","maxSetVersion":7,"servers":{},"setName":"atlas-mmstie-shard-0","stale":false,"type":"ReplicaSetNoPrimary"},"service":"prepmate-backend","stack":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","timestamp":"2026-04-09 11:52:01"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-00.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:01"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-02.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:11"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-02.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:11"}
+{"level":"error","message":"MongoServerSelectionError: getaddrinfo ENOTFOUND ac-nsem6hy-shard-00-02.dsol25y.mongodb.net\n    at Timeout._onTimeout (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongodb\\lib\\sdam\\topology.js:278:38)\n    at listOnTimeout (node:internal/timers:605:17)\n    at process.processTimers (node:internal/timers:541:7)","service":"prepmate-backend","timestamp":"2026-04-09 11:52:11"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 11:52:30"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 11:56:51"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 11:56:51"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 11:56:51"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0907562575ec3159e1b","service":"prepmate-backend","timestamp":"2026-04-09 11:56:51"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 11:57:00"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 11:57:00"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 11:58:10"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 11:58:13"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-09 11:58:14"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 11:59:21"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 12:49:39"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 12:49:39"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 12:49:41"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 12:52:01"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 12:52:01"}
+{"level":"info","message":"User Chaman kumar joined post 69d7533ce0219e4b238f8364","service":"prepmate-backend","timestamp":"2026-04-09 12:52:01"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 12:52:01"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 12:52:09"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 12:52:09"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 12:54:28"}
+{"level":"info","message":"User Eddie Martin joined post 69d7533ce0219e4b238f8364","service":"prepmate-backend","timestamp":"2026-04-09 12:54:28"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 12:54:28"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 12:54:28"}
+{"level":"info","message":"User Eddie Martin joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 12:54:28"}
+{"level":"info","message":"User Eddie Martin joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 12:54:28"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 12:54:34"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 12:54:34"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 12:54:34"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:23"}
+{"level":"info","message":"User Eddie Martin joined post 69d7533ce0219e4b238f8364","service":"prepmate-backend","timestamp":"2026-04-09 13:22:23"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:23"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:23"}
+{"level":"info","message":"User Eddie Martin joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 13:22:23"}
+{"level":"info","message":"User Eddie Martin joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 13:22:23"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:29"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:29"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:29"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User Eddie Martin joined post 69d7533ce0219e4b238f8364","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User Eddie Martin joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User Eddie Martin joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User Eddie Martin joined post 69d75abce0219e4b238f8858","service":"prepmate-backend","timestamp":"2026-04-09 13:22:30"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:53"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:53"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:53"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 13:22:53"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:27:42"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:32:48"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:37:59"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:41:04"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:43:17"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:44:23"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User Chaman kumar joined post 69d75abce0219e4b238f8858","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User Chaman kumar joined post 69d7533ce0219e4b238f8364","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User Chaman kumar joined post 69d665a0ba51e203bf72c678","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User Chaman kumar joined post 69d6b0957562575ec3159e2c","service":"prepmate-backend","timestamp":"2026-04-09 14:54:45"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:56"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:56"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:56"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 14:54:56"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 14:55:28"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 15:19:30"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 15:27:05"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 15:32:27"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 15:33:11"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 15:33:12"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 15:50:16"}
+{"level":"info","message":"User connected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 16:06:29"}
+{"level":"info","message":"User disconnected: Eddie Martin (69d63788ca129948ca6d4108)","service":"prepmate-backend","timestamp":"2026-04-09 16:06:32"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 16:17:56"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-09 16:17:59"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 17:11:04"}
+{"level":"error","message":"Failed to send verification email: Cannot read properties of undefined (reading 'getFromAddress')","service":"prepmate-backend","stack":"TypeError: Cannot read properties of undefined (reading 'getFromAddress')\n    at sendVerificationEmail (E:\\backup\\desktop\\project\\prepmate-backend\\utils\\emailService.js:122:18)\n    at E:\\backup\\desktop\\project\\prepmate-backend\\routes\\auth.js:328:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)","timestamp":"2026-04-09 17:17:31"}
+{"level":"error","message":"Failed to send verification email: Cannot read properties of undefined (reading 'getFromAddress')","service":"prepmate-backend","stack":"TypeError: Cannot read properties of undefined (reading 'getFromAddress')\n    at sendVerificationEmail (E:\\backup\\desktop\\project\\prepmate-backend\\utils\\emailService.js:122:18)\n    at E:\\backup\\desktop\\project\\prepmate-backend\\routes\\auth.js:328:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)","timestamp":"2026-04-09 17:18:19"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 23:47:25"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-09 23:49:35"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 00:07:27"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 00:15:41"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 00:16:09"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 00:33:37"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 00:43:04"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:05:35"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:06:32"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:06:59"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:07:27"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:11:09"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:13:44"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:28:13"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:34:10"}
+{"level":"error","message":"SyntaxError: Invalid regular expression: /[/i: Unterminated character class\n    at new RegExp (<anonymous>)\n    at E:\\backup\\desktop\\project\\prepmate-backend\\routes\\coding.js:556:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)","service":"prepmate-backend","timestamp":"2026-04-10 01:36:46"}
+{"level":"error","message":"SyntaxError: Invalid regular expression: /[/i: Unterminated character class\n    at new RegExp (<anonymous>)\n    at E:\\backup\\desktop\\project\\prepmate-backend\\routes\\coding.js:556:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)","service":"prepmate-backend","timestamp":"2026-04-10 01:36:53"}
+{"level":"error","message":"SyntaxError: Invalid regular expression: /[/i: Unterminated character class\n    at new RegExp (<anonymous>)\n    at E:\\backup\\desktop\\project\\prepmate-backend\\routes\\coding.js:556:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)","service":"prepmate-backend","timestamp":"2026-04-10 01:37:01"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:37:50"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:37:57"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:38:19"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:45:50"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 01:46:18"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 01:46:19"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:48:58"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:58:10"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:58:24"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:58:41"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:58:57"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:59:30"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:59:39"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 01:59:48"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:00:08"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:00:22"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:00:34"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:00:40"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:00:48"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:01:16"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:02:09"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 02:02:31"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 02:02:33"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 02:02:33"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:04:03"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:04:22"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:11:13"}
+{"level":"info","message":"Token blacklisted for 1773986379087 seconds: eyJhbGciOiJIUzI1NiIs...","service":"prepmate-backend","timestamp":"2026-04-10 02:17:09"}
+{"level":"info","message":"Token removed from blacklist (expired): eyJhbGciOiJIUzI1NiIs...","service":"prepmate-backend","timestamp":"2026-04-10 02:17:09"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:19:19"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:19:28"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:20:14"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:20:23"}
+{"level":"info","message":"Token blacklisted for 595912 seconds: eyJhbGciOiJIUzI1NiIs...","service":"prepmate-backend","timestamp":"2026-04-10 02:23:56"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:25:33"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 02:44:14"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 12:39:18"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 12:42:55"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 12:42:57"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 12:42:57"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:06"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:06"}
+{"level":"info","message":"User Chaman kumar mentioned user 69d63788ca129948ca6d4108 in room 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 12:43:07"}
+{"level":"info","message":"User Chaman kumar stopped typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:08"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:10"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:11"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:11"}
+{"level":"info","message":"User Chaman kumar is typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:11"}
+{"level":"info","message":"User Chaman kumar stopped typing in chat 69d63788ca129948ca6d4108","service":"prepmate-backend","timestamp":"2026-04-10 12:43:13"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 12:43:13"}
+{"level":"info","message":"Token blacklisted for 567523 seconds: eyJhbGciOiJIUzI1NiIs...","service":"prepmate-backend","timestamp":"2026-04-10 12:45:22"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 13:28:09"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 13:58:09"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 15:34:54"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 15:35:05"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 15:35:14"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 15:35:28"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 15:37:25"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 16:43:42"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 20:09:55"}
+{"level":"info","message":"Connected to MongoDB","service":"prepmate-backend","timestamp":"2026-04-10 20:14:22"}
+{"_message":"User validation failed","errors":{"adminRole":{"kind":"enum","message":"`null` is not a valid enum value for path `adminRole`.","name":"ValidatorError","path":"adminRole","properties":{"enumValues":["superadmin","moderator","support_admin","analytics_admin"],"message":"`null` is not a valid enum value for path `adminRole`.","path":"adminRole","type":"enum","value":null},"value":null},"username":{"kind":"required","message":"Please provide a username","name":"ValidatorError","path":"username","properties":{"message":"Please provide a username","path":"username","type":"required"}}},"level":"error","message":"Error creating superadmin: User validation failed: username: Please provide a username, adminRole: `null` is not a valid enum value for path `adminRole`.","service":"prepmate-backend","stack":"ValidationError: User validation failed: username: Please provide a username, adminRole: `null` is not a valid enum value for path `adminRole`.\n    at Document.invalidate (E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongoose\\lib\\document.js:3219:32)\n    at E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongoose\\lib\\document.js:3012:17\n    at E:\\backup\\desktop\\project\\prepmate-backend\\node_modules\\mongoose\\lib\\schematype.js:1368:9\n    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)","timestamp":"2026-04-10 20:14:23"}
+{"level":"info","message":"Disconnected from MongoDB","service":"prepmate-backend","timestamp":"2026-04-10 20:14:23"}
+{"level":"info","message":"Connected to MongoDB","service":"prepmate-backend","timestamp":"2026-04-10 20:15:29"}
+{"level":"info","message":"Superadmin created successfully","service":"prepmate-backend","timestamp":"2026-04-10 20:15:30"}
+{"level":"info","message":"Disconnected from MongoDB","service":"prepmate-backend","timestamp":"2026-04-10 20:15:30"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 20:19:09"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 22:49:39"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 22:53:55"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 22:53:58"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-10 22:53:58"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-10 22:55:36"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-10 22:57:23"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-11 13:21:36"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 13:23:14"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 13:23:16"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 13:29:48"}
+{"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-11 13:30:13"}
+{"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-11 13:30:13"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 13:30:25"}

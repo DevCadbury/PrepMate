@@ -1,13 +1,64 @@
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
-const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const {
+  authenticateToken,
+  authorizeRoles,
+  hasAdminPermission,
+} = require("../middleware/auth");
 const { asyncHandler } = require("../utils/asyncHandler");
 const SupportTicket = require("../models/SupportTicket");
 
 const SUPPORT_CATEGORIES = ["help", "bug", "billing", "abuse", "other"];
 const SUPPORT_PRIORITIES = ["low", "medium", "high", "urgent"];
 const SUPPORT_STATUSES = ["open", "in_progress", "resolved", "closed"];
+
+const escapeRegex = (value) =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const requireSupportViewAccess = (req, res, next) => {
+  if (req.user?.role === "support") {
+    return next();
+  }
+
+  if (req.user?.role === "admin") {
+    if (hasAdminPermission(req.user, ["admin.help.view", "admin.help.manage"])) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: "Access denied. Help-center view permission is required.",
+    });
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: "Access denied.",
+  });
+};
+
+const requireSupportManageAccess = (req, res, next) => {
+  if (req.user?.role === "support") {
+    return next();
+  }
+
+  if (req.user?.role === "admin") {
+    if (hasAdminPermission(req.user, "admin.help.manage")) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: "Access denied. Help-center management permission is required.",
+    });
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: "Access denied.",
+  });
+};
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
@@ -138,6 +189,7 @@ router.get(
 router.get(
   "/tickets",
   authorizeRoles(["admin", "support"]),
+  requireSupportViewAccess,
   asyncHandler(async (req, res) => {
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
@@ -153,9 +205,10 @@ router.get(
       where.category = category;
     }
     if (search) {
+      const safeRegex = new RegExp(escapeRegex(search), "i");
       where.$or = [
-        { subject: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
+        { subject: safeRegex },
+        { description: safeRegex },
       ];
     }
 
@@ -209,6 +262,14 @@ router.get(
 
     const isOwner = String(ticket.user?._id || ticket.user) === String(req.user._id);
     const isStaff = ["admin", "support"].includes(String(req.user.role || ""));
+
+    if (req.user.role === "admin" && !hasAdminPermission(req.user, ["admin.help.view", "admin.help.manage"])) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Help-center view permission is required.",
+      });
+    }
+
     if (!isOwner && !isStaff) {
       return res.status(403).json({
         success: false,
@@ -228,6 +289,7 @@ router.get(
 router.patch(
   "/tickets/:ticketId",
   authorizeRoles(["admin", "support"]),
+  requireSupportManageAccess,
   asyncHandler(async (req, res) => {
     if (!isValidObjectId(req.params.ticketId)) {
       return res.status(400).json({

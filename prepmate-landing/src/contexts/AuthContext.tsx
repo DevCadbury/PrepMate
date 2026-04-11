@@ -15,6 +15,8 @@ interface User {
   email: string;
   username?: string;
   role: "student" | "teacher" | "hr" | "admin" | "support";
+  adminRole?: "superadmin" | "moderator" | "support_admin" | "analytics_admin" | null;
+  permissions?: string[];
   subscription?: "free" | "basic" | "premium" | "enterprise";
   emailVerified: boolean;
   profilePicture: string;

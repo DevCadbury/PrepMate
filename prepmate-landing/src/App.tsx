@@ -21,6 +21,7 @@ import TeacherDashboard from "./components/dashboards/TeacherDashboard";
 import AdminLogin from "./components/AdminLogin";
 import AdminDashboard from "./components/dashboards/AdminDashboard";
 import ModernAdminDashboard from "./components/dashboards/ModernAdminDashboard";
+import AdminTerminal from "./components/admin-terminal/AdminTerminal";
 import TestAuth from "./components/TestAuth";
 import TestBackend from "./components/TestBackend";
 import UsernameSelection from "./components/UsernameSelection";
@@ -36,7 +37,6 @@ import TrendingPage from "./components/dashboards/pages/TrendingPage";
 import QuestionsPage from "./components/dashboards/pages/QuestionsPage";
 import CodingPage from "./components/dashboards/pages/CodingPage";
 import AICompanionPage from "./components/dashboards/pages/AICompanionPage";
-import AdminConsoleRoutes from "./components/admin-console/AdminConsoleRoutes";
 
 function App() {
   const [showSignIn, setShowSignIn] = useState(false);
@@ -95,7 +95,7 @@ function App() {
             element={
               <AdminLogin
                 onLogin={() =>
-                  (window.location.href = "/admin-console/overview")
+                  (window.location.href = "/admin-dashboard")
                 }
               />
             }
@@ -107,6 +107,14 @@ function App() {
                 <AdminDashboard
                   onLogout={() => (window.location.href = "/admin")}
                 />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin-terminal/*"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <AdminTerminal />
               </ProtectedRoute>
             }
           />
@@ -263,14 +271,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <StudentDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin-console/*"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <AdminConsoleRoutes />
               </ProtectedRoute>
             }
           />

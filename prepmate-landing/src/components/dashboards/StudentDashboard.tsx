@@ -20,7 +20,6 @@ import {
   ChatBubbleLeftIcon,
   AcademicCapIcon,
   CheckCircleIcon,
-  ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 import { Eye, Check, X } from "lucide-react";
 import { Button } from "../ui/button";
@@ -765,9 +764,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
     { id: "chat", name: "Chat", icon: ChatBubbleLeftRightIcon },
     { id: "follow-requests", name: "Follow Requests", icon: UserPlusIcon },
     { id: "ai-companion", name: "AI Companion", icon: SparklesIcon },
-    ...(String(user?.role || "").toLowerCase() === "admin"
-      ? [{ id: "admin-console", name: "Admin Console", icon: ShieldCheckIcon }]
-      : []),
     { id: "profile", name: "Profile", icon: UserIcon },
     { id: "settings", name: "Settings", icon: Settings },
   ];
@@ -802,9 +798,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         break;
       case "ai-companion":
         navigate("/ai-companion");
-        break;
-      case "admin-console":
-        navigate("/admin-console/overview");
         break;
       case "profile":
         navigate("/profile");
@@ -1141,20 +1134,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
                             Manage account
                           </span>
                         </DropdownMenuItem>
-
-                        {String(user?.role || "").toLowerCase() === "admin" && (
-                          <DropdownMenuItem
-                            className="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/60 dark:hover:bg-gray-800/60 hover:shadow-md cursor-pointer transition-all duration-200 group border border-transparent hover:border-sky-200/60 dark:hover:border-sky-600/40"
-                            onClick={() => navigate("/admin-console/overview")}
-                          >
-                            <div className="w-5 h-5 text-sky-500 dark:text-sky-400 group-hover:text-sky-600 dark:group-hover:text-sky-300 transition-colors">
-                              <ShieldCheckIcon className="w-5 h-5" />
-                            </div>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-sky-700 dark:group-hover:text-sky-200 transition-colors">
-                              Admin console
-                            </span>
-                          </DropdownMenuItem>
-                        )}
 
                         {/* Sign Out */}
                         <DropdownMenuItem

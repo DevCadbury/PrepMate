@@ -52,9 +52,32 @@ const userSchema = new mongoose.Schema(
       enum: ["student", "teacher", "hr", "admin", "support"],
       default: "student",
     },
+    adminRole: {
+      type: String,
+      enum: ["superadmin", "moderator", "support_admin", "analytics_admin"],
+      default: undefined,
+      set: (value) => {
+        if (value === null || value === undefined || value === "") {
+          return undefined;
+        }
+        return value;
+      },
+    },
     permissions: {
       type: [String],
       default: [],
+    },
+    restrictions: {
+      canPost: { type: Boolean, default: true },
+      canComment: { type: Boolean, default: true },
+      canFollow: { type: Boolean, default: true },
+      canLink: { type: Boolean, default: true },
+    },
+    suspensionDetails: {
+      reason: { type: String, default: "" },
+      suspendedAt: { type: Date },
+      suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      expiresAt: { type: Date },
     },
     isActive: {
       type: Boolean,

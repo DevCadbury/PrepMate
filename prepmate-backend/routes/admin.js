@@ -1,22 +1,188 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs/promises");
-const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
 const User = require("../models/User");
 const Post = require("../models/Post");
 const Message = require("../models/Message");
 const CodingProblem = require("../models/CodingProblem");
+const CodingSubmission = require("../models/CodingSubmission");
 const SupportTicket = require("../models/SupportTicket");
 const Notification = require("../models/Notification");
-const { authenticateToken, authorizeRoles } = require("../middleware/auth");
+const Comment = require("../models/Comment");
+const Interview = require("../models/Interview");
+const {
+  authenticateToken,
+  authorizeRoles,
+  authorizeAdminPermissions,
+  getEffectiveAdminPermissions,
+  normalizeAdminPermissionKey,
+  normalizeAdminRole,
+  ADMIN_PERMISSION_CATALOG,
+  ADMIN_ROLE_PERMISSION_DEFAULTS,
+} = require("../middleware/auth");
 
 const router = express.Router();
 
 const USER_ROLES = ["student", "teacher", "hr", "admin", "support"];
 const POST_STATUSES = ["active", "archived", "deleted", "hidden"];
 const CHAT_REVIEW_ACTIONS = new Set(["resolved", "dismissed", "blocked"]);
+const ADMIN_SUB_ROLES = [
+  "superadmin",
+  "moderator",
+  "support_admin",
+  "analytics_admin",
+];
+const ADMIN_INVITE_TOKEN_PREFIX = "admin_";
+const ADMIN_INVITE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const adminInviteTokens = new Map();
+
+const ADMIN_PERMISSION_KEYS = Object.freeze({
+  DASHBOARD_VIEW: "admin.dashboard.view",
+  USERS_VIEW: "admin.users.view",
+  USERS_MODERATE: "admin.users.moderate",
+  USERS_DELETE: "admin.users.delete",
+  USERS_ROLE_ASSIGN: "admin.users.role.assign",
+  USERS_PERMISSIONS_MANAGE: "admin.users.permissions.manage",
+  USERS_PASSWORD_RESET: "admin.users.password.reset",
+  CONTENT_VIEW: "admin.content.view",
+  CONTENT_MODERATE: "admin.content.moderate",
+  CHAT_REPORTS_VIEW: "admin.chatreports.view",
+  CHAT_REPORTS_MODERATE: "admin.chatreports.moderate",
+  ANALYTICS_VIEW: "admin.analytics.view",
+  ANALYTICS_VIEW_LIMITED: "admin.analytics.view.limited",
+  AI_VIEW: "admin.ai.view",
+  CODING_VIEW: "admin.coding.view",
+  CODING_MODERATE: "admin.coding.moderate",
+  CODING_DELETE: "admin.coding.delete",
+  HELP_VIEW: "admin.help.view",
+  HELP_MANAGE: "admin.help.manage",
+  SETTINGS_VIEW: "admin.settings.view",
+  SETTINGS_MANAGE: "admin.settings.manage",
+  LOGS_VIEW: "admin.logs.view",
+  TOKENS_GENERATE: "admin.tokens.generate",
+  ADMINS_MANAGE: "admin.admins.manage",
+  ADMINS_CREATE: "admin.admins.create",
+});
+
+const ADMIN_PERMISSION_KEY_SET = new Set(
+  ADMIN_PERMISSION_CATALOG.map((permission) => permission.key)
+);
+const LEGACY_PERMISSION_KEY_SET = new Set([
+  "user_management",
+  "analytics_view",
+  "admin_creation",
+]);
+
+const escapeRegex = (value) =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const normalizePostModerationStatus = (status) => {
+  const normalized = String(status || "").trim().toLowerCase();
+
+  if (normalized === "approved") {
+    return "active";
+  }
+
+  if (normalized === "rejected" || normalized === "removed") {
+    return "hidden";
+  }
+
+  return normalized;
+};
+
+const parseRequestedAdminRole = (value, fallback = "support_admin") => {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (ADMIN_SUB_ROLES.includes(normalized)) {
+    return normalized;
+  }
+
+  return null;
+};
+
+const sanitizePermissionList = (permissions) => {
+  const rawPermissions = Array.isArray(permissions) ? permissions : [];
+  const normalizedPermissions = rawPermissions
+    .map((permission) => normalizeAdminPermissionKey(permission))
+    .filter(
+      (permission) =>
+        permission === "*" ||
+        permission.endsWith(".*") ||
+        LEGACY_PERMISSION_KEY_SET.has(permission) ||
+        ADMIN_PERMISSION_KEY_SET.has(permission)
+    )
+    .filter(Boolean);
+
+  return Array.from(new Set(normalizedPermissions));
+};
+
+const pruneExpiredAdminInviteTokens = () => {
+  const now = Date.now();
+
+  for (const [token, record] of adminInviteTokens.entries()) {
+    if (!record?.expiresAt || new Date(record.expiresAt).getTime() <= now) {
+      adminInviteTokens.delete(token);
+    }
+  }
+};
+
+const issueAdminInviteToken = (createdBy, metadata = {}) => {
+  pruneExpiredAdminInviteTokens();
+
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const token = `${ADMIN_INVITE_TOKEN_PREFIX}${rawToken}`;
+  const expiresAt = new Date(Date.now() + ADMIN_INVITE_TOKEN_TTL_MS);
+
+  adminInviteTokens.set(token, {
+    createdBy,
+    expiresAt,
+    metadata,
+    used: false,
+  });
+
+  return { token, expiresAt };
+};
+
+const consumeAdminInviteToken = (token) => {
+  pruneExpiredAdminInviteTokens();
+
+  const record = adminInviteTokens.get(token);
+  if (!record) {
+    return {
+      success: false,
+      message: "Invalid or expired admin token",
+    };
+  }
+
+  if (record.used) {
+    return {
+      success: false,
+      message: "Admin token has already been used",
+    };
+  }
+
+  const expiresAtMs = new Date(record.expiresAt).getTime();
+  if (!expiresAtMs || expiresAtMs <= Date.now()) {
+    adminInviteTokens.delete(token);
+    return {
+      success: false,
+      message: "Admin token has expired",
+    };
+  }
+
+  record.used = true;
+  adminInviteTokens.set(token, record);
+
+  return {
+    success: true,
+    record,
+  };
+};
 
 const mapUserStatus = (user) => {
   if (user.isActive) return "active";
@@ -30,11 +196,13 @@ const mapUserRecord = (user) => ({
   username: user.username,
   email: user.email,
   role: user.role,
+  adminRole: user.adminRole || null,
   status: mapUserStatus(user),
   joinDate: user.createdAt,
   lastLogin: user.lastLogin || user.createdAt,
   subscription: user.subscription || "free",
   permissions: user.permissions || [],
+  restrictions: user.restrictions || undefined,
   googleLinked: Boolean(user.googleId),
   profilePicture: user.profilePicture || "",
 });
@@ -106,9 +274,95 @@ const resolveChatReportState = (message) => {
 };
 
 router.get(
+  "/me",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.DASHBOARD_VIEW]),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user._id)
+        .select(
+          "name username email role adminRole isActive createdAt lastLogin subscription permissions googleId profilePicture emailVerified restrictions"
+        )
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "Admin user not found",
+        });
+      }
+
+      const normalizedAdminRole = normalizeAdminRole(
+        user.adminRole || "superadmin"
+      );
+      const customPermissions = sanitizePermissionList(user.permissions);
+      const effectivePermissions = getEffectiveAdminPermissions({
+        ...user,
+        role: "admin",
+        adminRole: normalizedAdminRole,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          user: mapUserRecord(user),
+          adminRole: normalizedAdminRole,
+          customPermissions,
+          effectivePermissions,
+          permissionCatalog: ADMIN_PERMISSION_CATALOG,
+          roleDefaults: ADMIN_ROLE_PERMISSION_DEFAULTS,
+        },
+      });
+    } catch (error) {
+      console.error("Admin me endpoint error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+router.get(
+  "/permissions/catalog",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_VIEW]),
+  async (req, res) => {
+    try {
+      const catalogByModule = ADMIN_PERMISSION_CATALOG.reduce((acc, entry) => {
+        if (!acc[entry.module]) {
+          acc[entry.module] = [];
+        }
+
+        acc[entry.module].push(entry);
+        return acc;
+      }, {});
+
+      res.json({
+        success: true,
+        data: {
+          permissions: ADMIN_PERMISSION_CATALOG,
+          grouped: catalogByModule,
+          roleDefaults: ADMIN_ROLE_PERMISSION_DEFAULTS,
+        },
+      });
+    } catch (error) {
+      console.error("Admin permission catalog error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+router.get(
   "/dashboard",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.DASHBOARD_VIEW]),
   async (req, res) => {
     try {
       const [
@@ -156,6 +410,7 @@ router.get(
   "/overview",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.DASHBOARD_VIEW]),
   async (req, res) => {
     try {
       const [
@@ -230,6 +485,7 @@ router.get(
   "/insights",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.DASHBOARD_VIEW]),
   async (req, res) => {
     try {
       const now = Date.now();
@@ -401,6 +657,7 @@ router.get(
   "/users",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_VIEW]),
   async (req, res) => {
     try {
       const page = Math.max(1, Number(req.query.page || 1));
@@ -412,7 +669,7 @@ router.get(
       const where = {};
 
       if (search) {
-        const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        const regex = new RegExp(escapeRegex(search), "i");
         where.$or = [{ name: regex }, { email: regex }, { username: regex }];
       }
 
@@ -467,6 +724,7 @@ router.patch(
   "/users/:userId/status",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_MODERATE]),
   async (req, res) => {
     try {
       const nextStatus = String(req.body.status || "").trim().toLowerCase();
@@ -510,6 +768,7 @@ router.post(
   "/users/:userId/suspend",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_MODERATE]),
   async (req, res) => {
     try {
       const user = await User.findByIdAndUpdate(
@@ -535,6 +794,7 @@ router.post(
   "/users/:userId/activate",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_MODERATE]),
   async (req, res) => {
     try {
       const user = await User.findByIdAndUpdate(
@@ -560,6 +820,7 @@ router.post(
   "/users/:userId/delete",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_DELETE]),
   async (req, res) => {
     try {
       const user = await User.findByIdAndDelete(req.params.userId);
@@ -581,6 +842,7 @@ router.put(
   "/users/:userId/role",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_ROLE_ASSIGN]),
   async (req, res) => {
     try {
       const { role } = req.body;
@@ -616,12 +878,14 @@ router.put(
   "/users/:userId/permissions",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_PERMISSIONS_MANAGE]),
   async (req, res) => {
     try {
       const { permissions } = req.body;
+      const normalizedPermissions = sanitizePermissionList(permissions);
       const user = await User.findByIdAndUpdate(
         req.params.userId,
-        { permissions: Array.isArray(permissions) ? permissions : [] },
+        { permissions: normalizedPermissions },
         { new: true }
       );
       if (!user) {
@@ -632,6 +896,12 @@ router.put(
       res.json({
         success: true,
         message: "User permissions updated successfully",
+        data: {
+          user: mapUserRecord(user),
+          customPermissions: normalizedPermissions,
+          effectiveAdminPermissions:
+            user.role === "admin" ? getEffectiveAdminPermissions(user) : [],
+        },
       });
     } catch (error) {
       res
@@ -642,9 +912,102 @@ router.put(
 );
 
 router.get(
+  "/users/:userId/custom-permissions",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_PERMISSIONS_MANAGE]),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.params.userId).select(
+        "name email role adminRole permissions"
+      );
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      const customPermissions = sanitizePermissionList(user.permissions);
+      const effectiveAdminPermissions =
+        user.role === "admin"
+          ? getEffectiveAdminPermissions(user)
+          : [];
+
+      res.json({
+        success: true,
+        data: {
+          user: {
+            id: String(user._id),
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            adminRole: user.adminRole || null,
+          },
+          customPermissions,
+          effectiveAdminPermissions,
+        },
+      });
+    } catch (error) {
+      console.error("Admin custom permission read error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+router.patch(
+  "/users/:userId/custom-permissions",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_PERMISSIONS_MANAGE]),
+  async (req, res) => {
+    try {
+      const customPermissions = sanitizePermissionList(req.body.permissions);
+
+      const user = await User.findById(req.params.userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      user.permissions = customPermissions;
+      await user.save();
+
+      const effectiveAdminPermissions =
+        user.role === "admin"
+          ? getEffectiveAdminPermissions(user)
+          : [];
+
+      res.json({
+        success: true,
+        message: "Custom permissions updated",
+        data: {
+          user: mapUserRecord(user),
+          customPermissions,
+          effectiveAdminPermissions,
+        },
+      });
+    } catch (error) {
+      console.error("Admin custom permission update error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Internal server error",
+      });
+    }
+  }
+);
+
+router.get(
   "/social/posts",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CONTENT_VIEW]),
   async (req, res) => {
     try {
       const page = Math.max(1, Number(req.query.page || 1));
@@ -664,7 +1027,7 @@ router.get(
       }
 
       if (search) {
-        const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+        const regex = new RegExp(escapeRegex(search), "i");
         where.$or = [{ content: regex }, { tags: { $in: [regex] } }];
       }
 
@@ -733,9 +1096,10 @@ router.patch(
   "/social/posts/:postId/moderate",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CONTENT_MODERATE]),
   async (req, res) => {
     try {
-      const nextStatus = String(req.body.status || "").trim().toLowerCase();
+      const nextStatus = normalizePostModerationStatus(req.body.status);
       const resolutionNote = String(req.body.resolutionNote || "").trim();
 
       if (!POST_STATUSES.includes(nextStatus)) {
@@ -790,6 +1154,7 @@ router.get(
   "/chat/reports",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CHAT_REPORTS_VIEW]),
   async (req, res) => {
     try {
       const page = Math.max(1, Number(req.query.page || 1));
@@ -838,6 +1203,7 @@ router.patch(
   "/chat/reports/:messageId",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CHAT_REPORTS_MODERATE]),
   async (req, res) => {
     try {
       const decision = String(req.body.decision || "").trim().toLowerCase();
@@ -892,6 +1258,7 @@ router.get(
   "/logs/recent",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.LOGS_VIEW]),
   async (req, res) => {
     try {
       const lines = Math.min(1000, Math.max(20, Number(req.query.lines || 200)));
@@ -937,22 +1304,30 @@ router.post(
   "/generate-token",
   authenticateToken,
   authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.TOKENS_GENERATE]),
   async (req, res) => {
     try {
-      const currentUser = await User.findById(req.user.id);
-      if (!currentUser.permissions?.includes("admin_creation")) {
-        return res.status(403).json({
+      const requestedAdminRole = parseRequestedAdminRole(
+        req.body.adminRole,
+        "support_admin"
+      );
+      if (!requestedAdminRole) {
+        return res.status(400).json({
           success: false,
-          message: "You don't have permission to create admin accounts",
+          message: "Invalid admin role requested for invite token",
         });
       }
 
-      const token = crypto.randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const requestedPermissions = sanitizePermissionList(req.body.permissions);
+
+      const { token, expiresAt } = issueAdminInviteToken(req.user._id, {
+        adminRole: requestedAdminRole,
+        permissions: requestedPermissions,
+      });
 
       res.json({
         success: true,
-        token: `admin_${token}`,
+        token,
         expiresAt,
         message: "Admin token generated successfully",
       });
@@ -966,9 +1341,17 @@ router.post(
 
 router.post("/create-admin", async (req, res) => {
   try {
-    const { token, name, email, password } = req.body;
+    const { token, name, email, password, username, adminRole, permissions } =
+      req.body;
 
-    if (!String(token || "").startsWith("admin_")) {
+    if (!String(name || "").trim() || !String(email || "").trim() || !String(password || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, and password are required",
+      });
+    }
+
+    if (!String(token || "").startsWith(ADMIN_INVITE_TOKEN_PREFIX)) {
       return res
         .status(400)
         .json({ success: false, message: "Invalid admin token" });
@@ -981,14 +1364,41 @@ router.post("/create-admin", async (req, res) => {
         .json({ success: false, message: "User already exists" });
     }
 
+    const consumedToken = consumeAdminInviteToken(String(token));
+    if (!consumedToken.success) {
+      return res.status(400).json({
+        success: false,
+        message: consumedToken.message,
+      });
+    }
+
+    const tokenMeta = consumedToken.record?.metadata || {};
+
+    const normalizedAdminRole = parseRequestedAdminRole(
+      adminRole || tokenMeta.adminRole,
+      "support_admin"
+    );
+    if (!normalizedAdminRole) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid admin role",
+      });
+    }
+
+    const normalizedPermissions = sanitizePermissionList(
+      permissions || tokenMeta.permissions || []
+    );
+
     const adminUser = new User({
       name,
       email,
       password,
+      username: username || email.split("@")[0],
       role: "admin",
+      adminRole: normalizedAdminRole,
       isActive: true,
       emailVerified: true,
-      permissions: ["user_management", "analytics_view"],
+      permissions: normalizedPermissions,
     });
 
     await adminUser.save();
@@ -1001,11 +1411,611 @@ router.post("/create-admin", async (req, res) => {
         name: adminUser.name,
         email: adminUser.email,
         role: adminUser.role,
+        adminRole: adminUser.adminRole,
       },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
+
+// ─── USER PROFILE ADMIN CARD ─────────────────────────────────────────────────
+router.get(
+  "/users/:userId/profile",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_VIEW]),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.params.userId)
+        .select("-password -aiCompanion.geminiApiKey")
+        .populate("followers", "name username profilePicture")
+        .populate("following", "name username profilePicture")
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      const [posts, loginLogs, codingSubmissions, interviewCount] = await Promise.all([
+        Post.find({ user: user._id })
+          .select("content type status createdAt likes comments reports")
+          .sort({ createdAt: -1 })
+          .limit(20)
+          .lean(),
+        [], // Login logs would come from a separate logging system
+        CodingSubmission ? CodingSubmission.find({ user: user._id })
+          .select("problem language status score submittedAt")
+          .sort({ submittedAt: -1 })
+          .limit(20)
+          .lean()
+          .catch(() => []) : [],
+        Interview ? Interview.countDocuments({ user: user._id }).catch(() => 0) : 0,
+      ]);
+
+      const postReports = posts.reduce((acc, post) => {
+        const pending = (post.reports || []).filter(r => r.status === "pending");
+        return acc + pending.length;
+      }, 0);
+
+      res.json({
+        success: true,
+        data: {
+          user: {
+            ...user,
+            id: String(user._id),
+            status: user.isActive ? "active" : (user.emailVerified ? "suspended" : "pending"),
+          },
+          posts: posts.map(p => ({
+            id: String(p._id),
+            content: truncate(p.content, 200),
+            type: p.type,
+            status: p.status,
+            likesCount: Array.isArray(p.likes) ? p.likes.length : 0,
+            commentsCount: Array.isArray(p.comments) ? p.comments.length : 0,
+            reportsCount: Array.isArray(p.reports) ? p.reports.length : 0,
+            createdAt: p.createdAt,
+          })),
+          reportsAgainst: postReports,
+          pendingPostReports: postReports,
+          codingActivity: {
+            totalSubmissions: codingSubmissions.length,
+            submissions: codingSubmissions,
+          },
+          interviewCount,
+          violations: [], // Populated from admin logs when available
+        },
+      });
+    } catch (error) {
+      console.error("Admin user profile error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── USER RESTRICTIONS ───────────────────────────────────────────────────────
+router.patch(
+  "/users/:userId/restrictions",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_MODERATE]),
+  async (req, res) => {
+    try {
+      const { canPost, canComment, canFollow, canLink } = req.body;
+      const update = {};
+
+      if (typeof canPost === "boolean") update["restrictions.canPost"] = canPost;
+      if (typeof canComment === "boolean") update["restrictions.canComment"] = canComment;
+      if (typeof canFollow === "boolean") update["restrictions.canFollow"] = canFollow;
+      if (typeof canLink === "boolean") update["restrictions.canLink"] = canLink;
+
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ success: false, message: "No valid restrictions provided" });
+      }
+
+      const user = await User.findByIdAndUpdate(req.params.userId, { $set: update }, { new: true });
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      res.json({
+        success: true,
+        message: "User restrictions updated",
+        data: { restrictions: user.restrictions },
+      });
+    } catch (error) {
+      console.error("Admin user restrictions error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── USER PERMISSIONS (ACCOUNT LEVEL) ────────────────────────────────────────
+router.patch(
+  "/users/:userId/account-permissions",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_PERMISSIONS_MANAGE]),
+  async (req, res) => {
+    try {
+      const { privacy, notifications, account } = req.body;
+      const update = {};
+
+      if (privacy) {
+        Object.entries(privacy).forEach(([key, value]) => {
+          update[`preferences.privacy.${key}`] = value;
+        });
+      }
+      if (notifications) {
+        Object.entries(notifications).forEach(([key, value]) => {
+          update[`preferences.notifications.${key}`] = value;
+        });
+      }
+      if (account) {
+        Object.entries(account).forEach(([key, value]) => {
+          update[`preferences.account.${key}`] = value;
+        });
+      }
+
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ success: false, message: "No valid permissions provided" });
+      }
+
+      const user = await User.findByIdAndUpdate(req.params.userId, { $set: update }, { new: true })
+        .select("preferences restrictions");
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      res.json({
+        success: true,
+        message: "User account permissions updated",
+        data: { preferences: user.preferences, restrictions: user.restrictions },
+      });
+    } catch (error) {
+      console.error("Admin user permissions error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── PASSWORD RESET (ADMIN) ──────────────────────────────────────────────────
+router.post(
+  "/users/:userId/reset-password",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_PASSWORD_RESET]),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.params.userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      const resetToken = user.generatePasswordResetToken();
+      await user.save();
+
+      const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/reset-password/${resetToken}`;
+
+      res.json({
+        success: true,
+        message: "Password reset token generated",
+        data: { resetToken, resetUrl, expiresIn: "10 minutes" },
+      });
+    } catch (error) {
+      console.error("Admin password reset error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── SUSPEND WITH DETAILS ────────────────────────────────────────────────────
+router.post(
+  "/users/:userId/suspend-detailed",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.USERS_MODERATE]),
+  async (req, res) => {
+    try {
+      const { reason, duration } = req.body;
+      const expiresAt = duration ? new Date(Date.now() + duration * 24 * 60 * 60 * 1000) : null;
+
+      const user = await User.findByIdAndUpdate(
+        req.params.userId,
+        {
+          isActive: false,
+          suspensionDetails: {
+            reason: reason || "Suspended by admin",
+            suspendedAt: new Date(),
+            suspendedBy: req.user._id,
+            expiresAt,
+          },
+        },
+        { new: true }
+      );
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      res.json({
+        success: true,
+        message: "User suspended",
+        data: { suspensionDetails: user.suspensionDetails },
+      });
+    } catch (error) {
+      console.error("Admin suspend error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── ANALYTICS OVERVIEW ──────────────────────────────────────────────────────
+router.get(
+  "/analytics/overview",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([
+    ADMIN_PERMISSION_KEYS.ANALYTICS_VIEW,
+    ADMIN_PERMISSION_KEYS.ANALYTICS_VIEW_LIMITED,
+  ]),
+  async (req, res) => {
+    try {
+      const now = new Date();
+      const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalUsers,
+        activeUsers,
+        newUsersToday,
+        newUsersWeek,
+        newUsersMonth,
+        dailyActiveUsers,
+        monthlyActiveUsers,
+        totalPosts,
+        postsToday,
+        totalComments,
+        totalInterviews,
+        interviewsThisWeek,
+        totalCodingSubmissions,
+        codingSubmissionsWeek,
+        subscriptionStats,
+      ] = await Promise.all([
+        User.countDocuments(),
+        User.countDocuments({ isActive: true }),
+        User.countDocuments({ createdAt: { $gte: oneDayAgo } }),
+        User.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
+        User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+        User.countDocuments({ lastLogin: { $gte: oneDayAgo } }),
+        User.countDocuments({ lastLogin: { $gte: thirtyDaysAgo } }),
+        Post.countDocuments(),
+        Post.countDocuments({ createdAt: { $gte: oneDayAgo } }),
+        Comment ? Comment.countDocuments().catch(() => 0) : 0,
+        Interview ? Interview.countDocuments().catch(() => 0) : 0,
+        Interview ? Interview.countDocuments({ createdAt: { $gte: sevenDaysAgo } }).catch(() => 0) : 0,
+        CodingSubmission ? CodingSubmission.countDocuments().catch(() => 0) : 0,
+        CodingSubmission ? CodingSubmission.countDocuments({ submittedAt: { $gte: sevenDaysAgo } }).catch(() => 0) : 0,
+        User.aggregate([
+          { $group: { _id: { $ifNull: ["$subscription", "free"] }, count: { $sum: 1 } } },
+        ]),
+      ]);
+
+      const subs = { free: 0, basic: 0, premium: 0, enterprise: 0 };
+      subscriptionStats.forEach(s => {
+        const k = String(s._id || "free").toLowerCase();
+        if (subs.hasOwnProperty(k)) subs[k] = s.count;
+      });
+
+      const paidUsers = subs.basic + subs.premium + subs.enterprise;
+      const estimatedMRR = subs.basic * 9.99 + subs.premium * 29.99 + subs.enterprise * 99.99;
+
+      // User growth chart data (last 7 days)
+      const growthData = await User.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          users: {
+            total: totalUsers,
+            active: activeUsers,
+            newToday: newUsersToday,
+            newThisWeek: newUsersWeek,
+            newThisMonth: newUsersMonth,
+            dailyActive: dailyActiveUsers,
+            monthlyActive: monthlyActiveUsers,
+            growthPercent: totalUsers > 0 ? ((newUsersMonth / totalUsers) * 100).toFixed(1) : 0,
+          },
+          engagement: {
+            totalPosts,
+            postsToday,
+            totalComments,
+            avgPostsPerUser: totalUsers > 0 ? (totalPosts / totalUsers).toFixed(1) : 0,
+          },
+          interviews: {
+            total: totalInterviews,
+            thisWeek: interviewsThisWeek,
+          },
+          coding: {
+            totalSubmissions: totalCodingSubmissions,
+            submissionsThisWeek: codingSubmissionsWeek,
+          },
+          revenue: {
+            mrr: estimatedMRR.toFixed(2),
+            paidUsers,
+            subscriptions: subs,
+          },
+          growthChart: growthData,
+        },
+      });
+    } catch (error) {
+      console.error("Admin analytics error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── SYSTEM HEALTH ───────────────────────────────────────────────────────────
+router.get(
+  "/system/health",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([
+    ADMIN_PERMISSION_KEYS.DASHBOARD_VIEW,
+    ADMIN_PERMISSION_KEYS.ANALYTICS_VIEW,
+    ADMIN_PERMISSION_KEYS.ANALYTICS_VIEW_LIMITED,
+  ]),
+  async (req, res) => {
+    try {
+      const mongoose = require("mongoose");
+      const dbState = mongoose.connection.readyState;
+      const dbStates = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
+
+      const startTime = Date.now();
+      await User.findOne().select("_id").lean();
+      const dbLatency = Date.now() - startTime;
+
+      const aiConfigured =
+        Boolean(process.env.GEMINI_API_KEY) || Boolean(process.env.OPENAI_API_KEY);
+
+      res.json({
+        success: true,
+        data: {
+          services: [
+            {
+              name: "API Gateway",
+              status: "operational",
+              latency: `${Date.now() - startTime}ms`,
+              uptime: "99.9%",
+            },
+            {
+              name: "Database",
+              status: dbState === 1 ? "operational" : "degraded",
+              latency: `${dbLatency}ms`,
+              uptime: dbState === 1 ? "99.9%" : "0%",
+              details: dbStates[dbState] || "unknown",
+            },
+            {
+              name: "AI Engine",
+              status: aiConfigured ? "operational" : "degraded",
+              latency: aiConfigured ? "n/a" : "n/a",
+              uptime: aiConfigured ? "configured" : "not_configured",
+            },
+          ],
+          serverUptime: process.uptime(),
+          memoryUsage: process.memoryUsage(),
+          nodeVersion: process.version,
+        },
+      });
+    } catch (error) {
+      console.error("System health error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── AI USAGE ────────────────────────────────────────────────────────────────
+router.get(
+  "/ai/usage",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.AI_VIEW]),
+  async (req, res) => {
+    try {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const [aiConfigured, aiValid, totalInterviews, interviewsToday] = await Promise.all([
+        User.countDocuments({ "aiCompanion.geminiApiKey": { $exists: true, $ne: "" } }),
+        User.countDocuments({ "aiCompanion.isApiKeyValid": true }),
+        Interview ? Interview.countDocuments().catch(() => 0) : 0,
+        Interview
+          ? Interview.find({ createdAt: { $gte: oneDayAgo } })
+              .select("questions status")
+              .lean()
+              .catch(() => [])
+          : [],
+      ]);
+
+      const requestsToday = interviewsToday.reduce((count, interview) => {
+        const questionCount = Array.isArray(interview.questions)
+          ? interview.questions.length
+          : 0;
+        return count + Math.max(1, questionCount);
+      }, 0);
+
+      const errorsToday = interviewsToday.filter(
+        (interview) => interview.status === "cancelled"
+      ).length;
+
+      const estimatedCost = (requestsToday * 0.0012).toFixed(2);
+
+      res.json({
+        success: true,
+        data: {
+          configuredUsers: aiConfigured,
+          validApiKeys: aiValid,
+          totalAIInterviews: totalInterviews,
+          usage: {
+            requestsToday,
+            errorsToday,
+            estimatedCost: `$${estimatedCost}`,
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Admin AI usage error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── CODING PROBLEMS MANAGEMENT ──────────────────────────────────────────────
+router.get(
+  "/coding/problems",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CODING_VIEW]),
+  async (req, res) => {
+    try {
+      const page = Math.max(1, Number(req.query.page || 1));
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit || 20)));
+      const status = String(req.query.status || "").trim().toLowerCase();
+      const search = String(req.query.search || "").trim();
+
+      const where = {};
+      if (status) where.approvalStatus = status;
+      if (search) {
+        const safeRegex = new RegExp(escapeRegex(search), "i");
+        where.$or = [
+          { title: safeRegex },
+          { tags: { $in: [safeRegex] } },
+        ];
+      }
+
+      const [total, problems] = await Promise.all([
+        CodingProblem.countDocuments(where),
+        CodingProblem.find(where)
+          .select("title difficulty tags approvalStatus createdBy createdAt")
+          .sort({ createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .populate("createdBy", "name username")
+          .lean(),
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          problems: problems.map(p => ({
+            id: String(p._id),
+            title: p.title,
+            difficulty: p.difficulty,
+            tags: p.tags || [],
+            status: p.approvalStatus || "approved",
+            createdBy: p.createdBy ? { id: String(p.createdBy._id), name: p.createdBy.name, username: p.createdBy.username } : null,
+            createdAt: p.createdAt,
+          })),
+          pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+        },
+      });
+    } catch (error) {
+      console.error("Admin coding problems error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.patch(
+  "/coding/problems/:problemId",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CODING_MODERATE]),
+  async (req, res) => {
+    try {
+      const updates = {};
+      if (req.body.title) updates.title = req.body.title;
+      if (req.body.difficulty) updates.difficulty = req.body.difficulty;
+      if (req.body.approvalStatus) updates.approvalStatus = req.body.approvalStatus;
+      if (req.body.tags) updates.tags = req.body.tags;
+
+      const problem = await CodingProblem.findByIdAndUpdate(req.params.problemId, updates, { new: true });
+      if (!problem) {
+        return res.status(404).json({ success: false, message: "Problem not found" });
+      }
+
+      res.json({ success: true, message: "Problem updated", data: { problem } });
+    } catch (error) {
+      console.error("Admin coding problem update error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.delete(
+  "/coding/problems/:problemId",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CODING_DELETE]),
+  async (req, res) => {
+    try {
+      const problem = await CodingProblem.findByIdAndDelete(req.params.problemId);
+      if (!problem) {
+        return res.status(404).json({ success: false, message: "Problem not found" });
+      }
+      res.json({ success: true, message: "Problem deleted" });
+    } catch (error) {
+      console.error("Admin coding problem delete error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── ADMIN ROLE MANAGEMENT ───────────────────────────────────────────────────
+router.patch(
+  "/users/:userId/admin-role",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.ADMINS_MANAGE]),
+  async (req, res) => {
+    try {
+      const { adminRole } = req.body;
+      const normalizedRole = parseRequestedAdminRole(adminRole, null);
+
+      if (!normalizedRole) {
+        return res.status(400).json({ success: false, message: "Invalid admin role" });
+      }
+
+      const user = await User.findById(req.params.userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      if (user.role !== "admin") {
+        user.role = "admin";
+      }
+      user.adminRole = normalizedRole;
+      await user.save();
+
+      res.json({
+        success: true,
+        message: "Admin role updated",
+        data: { user: mapUserRecord(user) },
+      });
+    } catch (error) {
+      console.error("Admin role update error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
 
 module.exports = router;

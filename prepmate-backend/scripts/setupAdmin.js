@@ -34,15 +34,13 @@ const setupAdmin = async () => {
     // Create admin user
     const adminUser = await User.create({
       name: "Super Admin",
+      username: "superadmin",
       email: "admin@prepmate.com",
       password: hashedPassword,
       role: "admin",
+      adminRole: "superadmin",
       permissions: [
-        "user_management",
-        "admin_creation",
-        "content_management",
-        "analytics_access",
-        "system_settings",
+        "*",
       ],
       isActive: true,
       emailVerified: true,
