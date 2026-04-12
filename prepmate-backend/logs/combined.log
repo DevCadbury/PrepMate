@@ -7901,3 +7901,10 @@
 {"level":"info","message":"User Chaman kumar joined chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-11 13:30:13"}
 {"level":"info","message":"User Chaman kumar marked messages as seen in chat 69d63cef3bb4cfb41aa8691c","service":"prepmate-backend","timestamp":"2026-04-11 13:30:13"}
 {"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 13:30:25"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-11 21:35:05"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 21:37:11"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 21:37:18"}
+{"level":"info","message":"User connected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 22:49:29"}
+{"level":"info","message":"User disconnected: Chaman kumar (69d61d7fa52f34d53819fc5b)","service":"prepmate-backend","timestamp":"2026-04-11 22:49:31"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-11 23:19:26"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-11 23:29:46"}

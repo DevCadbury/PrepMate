@@ -5,23 +5,12 @@ import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { initializeIndianVoices } from "./services/initIndianVoices";
 import { responsiveVoiceService } from "./services/responsiveVoiceService";
-import Hero from "./components/Hero";
-import Features from "./components/Features";
-import Pricing from "./components/Pricing";
-import Testimonials from "./components/Testimonials";
-import Contact from "./components/Contact";
-import Footer from "./components/Footer";
-import Navbar from "./components/Navbar";
 import SignInModal from "./components/SignInModal";
 import SignUpModal from "./components/SignUpModal";
 import AuthCallback from "./components/AuthCallback";
 import AdminAuthCallback from "./components/AdminAuthCallback";
 import StudentDashboard from "./components/dashboards/StudentDashboard";
 import TeacherDashboard from "./components/dashboards/TeacherDashboard";
-import AdminLogin from "./components/AdminLogin";
-import AdminDashboard from "./components/dashboards/AdminDashboard";
-import ModernAdminDashboard from "./components/dashboards/ModernAdminDashboard";
-import AdminTerminal from "./components/admin-terminal/AdminTerminal";
 import TestAuth from "./components/TestAuth";
 import TestBackend from "./components/TestBackend";
 import UsernameSelection from "./components/UsernameSelection";
@@ -30,13 +19,9 @@ import GoogleAuthError from "./components/GoogleAuthError";
 import TestGoogleAuth from "./components/TestGoogleAuth";
 import ResetPasswordPage from "./components/ResetPasswordPage";
 import LandingPage from "./components/dashboards/pages/LandingPage";
-import SettingsPage from "./components/dashboards/pages/SettingsPage";
-import ProfilePage from "./components/dashboards/pages/ProfilePage";
-import FeedPage from "./components/dashboards/pages/FeedPage";
-import TrendingPage from "./components/dashboards/pages/TrendingPage";
-import QuestionsPage from "./components/dashboards/pages/QuestionsPage";
-import CodingPage from "./components/dashboards/pages/CodingPage";
-import AICompanionPage from "./components/dashboards/pages/AICompanionPage";
+import AdminRoutes from "./app/AdminRoutes";
+
+let voiceServicesInitialized = false;
 
 function App() {
   const [showSignIn, setShowSignIn] = useState(false);
@@ -44,6 +29,12 @@ function App() {
 
   // Initialize voice services on app startup
   useEffect(() => {
+    if (voiceServicesInitialized) {
+      return;
+    }
+
+    voiceServicesInitialized = true;
+
     const initializeVoices = async () => {
       try {
         // Initialize Indian voice service
@@ -73,14 +64,6 @@ function App() {
     initializeVoices();
   }, []);
 
-  const handleGetStarted = () => {
-    setShowSignUp(true);
-  };
-
-  const handleSignIn = () => {
-    setShowSignIn(true);
-  };
-
   return (
     <AuthProvider>
       <Router>
@@ -91,40 +74,10 @@ function App() {
           <Route path="/test-auth" element={<TestAuth />} />
           <Route path="/test-backend" element={<TestBackend />} />
           <Route
-            path="/admin"
-            element={
-              <AdminLogin
-                onLogin={() =>
-                  (window.location.href = "/admin-dashboard")
-                }
-              />
-            }
-          />
-          <Route
-            path="/admin-dashboard"
+            path="/admin/*"
             element={
               <ProtectedRoute requiredRole="admin">
-                <AdminDashboard
-                  onLogout={() => (window.location.href = "/admin")}
-                />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin-terminal/*"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <AdminTerminal />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/modern-admin-dashboard"
-            element={
-              <ProtectedRoute requiredRole="admin">
-                <ModernAdminDashboard
-                  onLogout={() => (window.location.href = "/admin")}
-                />
+                <AdminRoutes />
               </ProtectedRoute>
             }
           />
@@ -175,14 +128,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <StudentDashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute>
-                <AdminDashboard />
               </ProtectedRoute>
             }
           />

@@ -221,13 +221,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   // Check if user is authenticated on mount
   useEffect(() => {
     const checkAuth = async () => {
-      console.log("=== CHECKING AUTH ON MOUNT ===");
       const token = localStorage.getItem("token");
-      console.log("Token found:", !!token);
 
       if (token) {
         try {
-          console.log("Validating token with API...");
           const response = await apiClient.fetch(`/auth/me`, {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -237,16 +234,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
           if (response.ok) {
             const data = await response.json();
-            console.log(
-              "Token valid, user authenticated:",
-              data.data.user.name
-            );
             dispatch({
               type: "AUTH_SUCCESS",
               payload: { user: data.data.user, token },
             });
           } else {
-            console.log("Token invalid, removing from localStorage");
             // Token is invalid, remove it
             localStorage.removeItem("token");
             dispatch({ type: "AUTH_FAILURE", payload: "Session expired" });
@@ -257,7 +249,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
           dispatch({ type: "AUTH_FAILURE", payload: "Authentication failed" });
         }
       } else {
-        console.log("No token found, setting loading to false");
         // No token found, set loading to false immediately
         dispatch({ type: "SET_LOADING", payload: false });
       }

@@ -1,0 +1,77 @@
+/* Admin Dashboard — Purposeful transitions */
+
+/* Page content fade-in */
+main > div {
+  animation: adminFadeIn 0.2s ease-out;
+}
+
+@keyframes adminFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Interactive element transitions */
+button,
+a,
+[role="button"] {
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Card subtle lift on hover */
+.admin-card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.admin-card:hover {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 4px 12px 0 rgb(0 0 0 / 0.06);
+  transform: translateY(-1px);
+}
+
+/* Table row hover */
+[role="row"] {
+  transition: background-color 0.1s ease;
+}
+
+/* Sidebar nav links */
+nav a {
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+/* Dialog entrance */
+[role="dialog"],
+[role="alertdialog"] {
+  animation: adminDialogIn 0.15s ease-out;
+}
+
+@keyframes adminDialogIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Badge transitions */
+[class*="badge"] {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Smooth scrolling */
+* {
+  scroll-behavior: smooth;
+}
+
+/* Focus ring refinement */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

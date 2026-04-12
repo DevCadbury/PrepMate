@@ -20,6 +20,7 @@ import {
   ChatBubbleLeftIcon,
   AcademicCapIcon,
   CheckCircleIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/24/outline";
 import { Eye, Check, X } from "lucide-react";
 import { Button } from "../ui/button";
@@ -768,6 +769,17 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
     { id: "settings", name: "Settings", icon: Settings },
   ];
 
+  const canOpenAdminConsole =
+    user?.role === "admin" || Boolean(user?.adminRole);
+
+  if (canOpenAdminConsole) {
+    navigationItems.splice(7, 0, {
+      id: "admin-console",
+      name: "Admin Console",
+      icon: ShieldCheckIcon,
+    });
+  }
+
   const mobileNavigationItems = [
     { id: "feed", name: "Feed", icon: HomeIcon },
     { id: "chat", name: "Chat", icon: ChatBubbleLeftRightIcon },
@@ -775,6 +787,14 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
     { id: "profile", name: "Profile", icon: UserIcon },
     { id: "settings", name: "Settings", icon: Settings },
   ];
+
+  if (canOpenAdminConsole) {
+    mobileNavigationItems[4] = {
+      id: "admin-console",
+      name: "Admin",
+      icon: ShieldCheckIcon,
+    };
+  }
 
   const navigateToPage = (pageId: string) => {
     switch (pageId) {
@@ -804,6 +824,9 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
         break;
       case "settings":
         navigate("/settings");
+        break;
+      case "admin-console":
+        navigate("/admin");
         break;
       default:
         navigate("/feed");
@@ -1134,6 +1157,20 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
                             Manage account
                           </span>
                         </DropdownMenuItem>
+
+                        {canOpenAdminConsole && (
+                          <DropdownMenuItem
+                            className="flex items-center space-x-3 p-3 rounded-lg hover:bg-white/60 dark:hover:bg-gray-800/60 hover:shadow-md cursor-pointer transition-all duration-200 group border border-transparent hover:border-blue-200/60 dark:hover:border-blue-600/40"
+                            onClick={() => navigate("/admin")}
+                          >
+                            <div className="w-5 h-5 text-blue-500 dark:text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                              <ShieldCheckIcon className="w-5 h-5" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-700 dark:group-hover:text-blue-200 transition-colors">
+                              Open admin console
+                            </span>
+                          </DropdownMenuItem>
+                        )}
 
                         {/* Sign Out */}
                         <DropdownMenuItem

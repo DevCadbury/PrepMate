@@ -1935,6 +1935,346 @@ router.get(
   }
 );
 
+router.get(
+  "/coding/problems/:problemId",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.CODING_VIEW]),
+  async (req, res) => {
+    try {
+      const problem = await CodingProblem.findById(req.params.problemId).lean();
+      if (!problem) {
+        return res.status(404).json({ success: false, message: "Problem not found" });
+      }
+
+      const [
+        totalSubmissionCount,
+        acceptedSubmissionCount,
+        recentSubmissions,
+        languageDistributionRaw,
+        solverAggregates,
+        solveRateTrendRaw,
+      ] = await Promise.all([
+        CodingSubmission.countDocuments({ problem: problem._id }),
+        CodingSubmission.countDocuments({ problem: problem._id, status: "Accepted" }),
+        CodingSubmission.find({ problem: problem._id })
+          .select(
+            "user language status runtimeMs memoryKb passedTestCases totalTestCases code createdAt testResults"
+          )
+          .sort({ createdAt: -1 })
+          .limit(200)
+          .populate("user", "name email profilePicture")
+          .lean(),
+        CodingSubmission.aggregate([
+          { $match: { problem: problem._id } },
+          {
+            $group: {
+              _id: "$language",
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { count: -1 } },
+          { $limit: 8 },
+        ]),
+        CodingSubmission.aggregate([
+          { $match: { problem: problem._id, status: "Accepted", user: { $exists: true } } },
+          { $sort: { createdAt: 1 } },
+          {
+            $group: {
+              _id: "$user",
+              solvedAt: { $first: "$createdAt" },
+              attempts: { $sum: 1 },
+              bestRuntimeMs: { $min: { $ifNull: ["$runtimeMs", Number.MAX_SAFE_INTEGER] } },
+              bestLanguage: { $first: "$language" },
+            },
+          },
+          { $sort: { solvedAt: 1 } },
+          { $limit: 200 },
+        ]),
+        CodingSubmission.aggregate([
+          {
+            $match: {
+              problem: problem._id,
+              createdAt: {
+                $gte: new Date(Date.now() - 6 * 31 * 24 * 60 * 60 * 1000),
+              },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                year: { $year: "$createdAt" },
+                month: { $month: "$createdAt" },
+              },
+              attempts: { $sum: 1 },
+              accepted: {
+                $sum: {
+                  $cond: [{ $eq: ["$status", "Accepted"] }, 1, 0],
+                },
+              },
+            },
+          },
+          { $sort: { "_id.year": 1, "_id.month": 1 } },
+        ]),
+      ]);
+
+      const problemAcceptance = problem.acceptance || {};
+      const attempted = Number(
+        problemAcceptance.totalSubmissions || totalSubmissionCount || 0
+      );
+      const solved = Number(
+        problemAcceptance.totalAccepted || acceptedSubmissionCount || 0
+      );
+      const solveRate = attempted > 0 ? Math.round((solved / attempted) * 100) : 0;
+
+      const formatSubmissionStatus = (status) => {
+        const normalized = String(status || "").toLowerCase();
+        if (normalized === "accepted") return "accepted";
+        if (normalized.includes("wrong")) return "wrong_answer";
+        if (normalized.includes("time limit")) return "time_limit_exceeded";
+        if (normalized.includes("runtime")) return "runtime_error";
+        return "compile_error";
+      };
+
+      const fallbackColors = [
+        "bg-blue-500",
+        "bg-purple-500",
+        "bg-teal-500",
+        "bg-rose-500",
+        "bg-amber-500",
+        "bg-indigo-500",
+      ];
+
+      const pickColor = (seed) => {
+        const raw = String(seed || "x");
+        let hash = 0;
+        for (let i = 0; i < raw.length; i += 1) {
+          hash = (hash * 31 + raw.charCodeAt(i)) >>> 0;
+        }
+        return fallbackColors[hash % fallbackColors.length];
+      };
+
+      const formatInitials = (name) => {
+        return String(name || "User")
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() || "")
+          .join("");
+      };
+
+      const submissions = recentSubmissions.map((submission) => {
+        const failedTestResult = Array.isArray(submission.testResults)
+          ? submission.testResults.find((result) => !result.passed)
+          : null;
+
+        const userRecord = submission.user || {};
+        const userName = String(userRecord.name || "User");
+        const userEmail = String(userRecord.email || "unknown@example.com");
+
+        return {
+          id: String(submission._id),
+          user: {
+            id: String(userRecord._id || ""),
+            name: userName,
+            email: userEmail,
+            initials: formatInitials(userName),
+            color: pickColor(userRecord._id || userEmail),
+          },
+          language: String(submission.language || "unknown"),
+          status: formatSubmissionStatus(submission.status),
+          runtime: Number.isFinite(Number(submission.runtimeMs))
+            ? `${Number(submission.runtimeMs)}ms`
+            : "—",
+          memory:
+            Number.isFinite(Number(submission.memoryKb)) && Number(submission.memoryKb) > 0
+              ? `${(Number(submission.memoryKb) / 1024).toFixed(1)}MB`
+              : "—",
+          submittedAt: submission.createdAt,
+          code: String(submission.code || ""),
+          output: failedTestResult?.actualOutput || undefined,
+          errorMessage:
+            submission.status === "Accepted"
+              ? undefined
+              : failedTestResult?.status || submission.status,
+          passedTests: Number(submission.passedTestCases || 0),
+          totalTests: Number(submission.totalTestCases || 0),
+        };
+      });
+
+      const solverUserIds = solverAggregates
+        .map((aggregate) => aggregate._id)
+        .filter(Boolean);
+      const solverUsers = solverUserIds.length
+        ? await User.find({ _id: { $in: solverUserIds } })
+            .select("name email")
+            .lean()
+        : [];
+      const solverUserMap = new Map(
+        solverUsers.map((user) => [String(user._id), user])
+      );
+
+      const solvers = solverAggregates.map((aggregate) => {
+        const userRecord = solverUserMap.get(String(aggregate._id));
+        const userName = String(userRecord?.name || "User");
+        const userEmail = String(userRecord?.email || "unknown@example.com");
+
+        return {
+          user: {
+            id: String(aggregate._id),
+            name: userName,
+            email: userEmail,
+            initials: formatInitials(userName),
+            color: pickColor(aggregate._id || userEmail),
+          },
+          solvedAt: aggregate.solvedAt || null,
+          timeTaken: null,
+          attempts: Number(aggregate.attempts || 0),
+          bestRuntime:
+            Number.isFinite(Number(aggregate.bestRuntimeMs)) &&
+            Number(aggregate.bestRuntimeMs) !== Number.MAX_SAFE_INTEGER
+              ? `${Number(aggregate.bestRuntimeMs)}ms`
+              : "—",
+          bestLanguage: String(aggregate.bestLanguage || "unknown"),
+        };
+      });
+
+      const languageColors = [
+        "#3b82f6",
+        "#8b5cf6",
+        "#f59e0b",
+        "#10b981",
+        "#ef4444",
+        "#14b8a6",
+      ];
+
+      const languageDistribution = languageDistributionRaw.map((entry, index) => ({
+        lang: String(entry._id || "unknown"),
+        count: Number(entry.count || 0),
+        color: languageColors[index % languageColors.length],
+      }));
+
+      const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const trendMap = new Map(
+        solveRateTrendRaw.map((entry) => {
+          const key = `${entry._id?.year || 0}-${entry._id?.month || 0}`;
+          const attemptsCount = Number(entry.attempts || 0);
+          const acceptedCount = Number(entry.accepted || 0);
+
+          return [
+            key,
+            {
+              attempts: attemptsCount,
+              rate:
+                attemptsCount > 0
+                  ? Math.round((acceptedCount / attemptsCount) * 100)
+                  : 0,
+            },
+          ];
+        })
+      );
+
+      const solveRateTrend = [];
+      const now = new Date();
+      for (let i = 5; i >= 0; i -= 1) {
+        const bucketDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${bucketDate.getFullYear()}-${bucketDate.getMonth() + 1}`;
+        const metric = trendMap.get(key) || { attempts: 0, rate: 0 };
+
+        solveRateTrend.push({
+          date: monthLabels[bucketDate.getMonth()],
+          rate: metric.rate,
+          attempts: metric.attempts,
+        });
+      }
+
+      const visibleTestCases = Array.isArray(problem.publicTestCases) && problem.publicTestCases.length > 0
+        ? problem.publicTestCases
+        : Array.isArray(problem.sampleTestCases)
+          ? problem.sampleTestCases
+          : [];
+      const hiddenTestCases = Array.isArray(problem.hiddenTestCases)
+        ? problem.hiddenTestCases
+        : [];
+
+      const testCases = [
+        ...visibleTestCases.map((testCase, index) => ({
+          id: `public-${index}`,
+          input: String(testCase.input || ""),
+          expectedOutput: String(testCase.expectedOutput || ""),
+          hidden: false,
+        })),
+        ...hiddenTestCases.map((testCase, index) => ({
+          id: `hidden-${index}`,
+          input: String(testCase.input || ""),
+          expectedOutput: String(testCase.expectedOutput || ""),
+          hidden: true,
+        })),
+      ];
+
+      const examples = Array.isArray(problem.sampleTestCases)
+        ? problem.sampleTestCases.map((testCase) => ({
+            input: String(testCase.input || ""),
+            output: String(testCase.expectedOutput || ""),
+            explanation: String(testCase.explanation || ""),
+          }))
+        : [];
+
+      const bestRuntimeMs = submissions
+        .map((submission) => Number.parseInt(String(submission.runtime || "0"), 10))
+        .filter((value) => Number.isFinite(value) && value > 0)
+        .sort((a, b) => a - b)[0];
+
+      const avgAttempts = solvers.length > 0
+        ? Number(
+            (
+              solvers.reduce((sum, solver) => sum + Number(solver.attempts || 0), 0) /
+              solvers.length
+            ).toFixed(1)
+          )
+        : 0;
+
+      res.json({
+        success: true,
+        data: {
+          problem: {
+            id: String(problem._id),
+            title: String(problem.title || "Untitled problem"),
+            difficulty: String(problem.difficulty || "Easy").toLowerCase(),
+            category: Array.isArray(problem.tags) && problem.tags.length > 0
+              ? String(problem.tags[0])
+              : "General",
+            tags: Array.isArray(problem.tags) ? problem.tags : [],
+            solved,
+            attempted,
+            status: String(problem.approvalStatus || "approved") === "approved" ? "active" : "draft",
+            description: String(problem.description || ""),
+            constraints: Array.isArray(problem.constraints)
+              ? problem.constraints.join("\n")
+              : String(problem.constraints || ""),
+            examples,
+            testCases,
+            createdAt: problem.createdAt,
+            updatedAt: problem.updatedAt,
+            solveRate,
+          },
+          submissions,
+          solvers,
+          analytics: {
+            solveRateTrend,
+            languageDistribution,
+            avgAttempts,
+            bestRuntime: Number.isFinite(bestRuntimeMs) ? `${bestRuntimeMs}ms` : "—",
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Admin coding problem detail error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
 router.patch(
   "/coding/problems/:problemId",
   authenticateToken,
