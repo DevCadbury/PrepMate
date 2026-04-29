@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode, ElementType } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -14,23 +14,15 @@ import {
   AlertTriangle,
   CheckCircle2,
   Users,
-  Percent,
-  DollarSign,
-  Gift,
   Globe,
-  Smartphone,
   Monitor,
   Ban,
   Shield,
   Clock,
   Calendar,
   TrendingUp,
-  TrendingDown,
-  RefreshCw,
-  Tag,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Separator } from '../../components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
@@ -61,18 +53,24 @@ import {
 } from 'recharts';
 import { toast } from 'sonner';
 import {
-  mockCoupons,
-  mockUsageLogs,
-  getUsageTrendData,
+  buildUsageTrendFromLogs,
+  Coupon,
+  CouponStatus,
+  CouponUsage,
   formatDiscountValue,
   getUsagePercent,
   isNearLimit,
   getCouponStatusColor,
   getVariantColor,
-  Coupon,
 } from '../data/couponData';
 import UsageLogsTable from '../components/coupons/UsageLogsTable';
 import { cn } from '../../lib/utils';
+import {
+  deleteAdminCoupon,
+  fetchAdminCouponById,
+  fetchAdminCouponUsage,
+  updateAdminCouponStatus,
+} from '../lib/backendAdapters';
 
 // ─── Chart tooltip style ─────────────────────────────────────────────────────
 
@@ -83,6 +81,19 @@ const tooltipStyle = {
   boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
   fontSize: '12px',
   padding: '8px 12px',
+};
+
+const formatDateTime = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 };
 
 // ─── Small stat card ─────────────────────────────────────────────────────────
@@ -131,13 +142,56 @@ export default function CouponDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const coupon = mockCoupons.find((c) => c.id === id) ?? mockCoupons[0];
-  const logs = mockUsageLogs.filter((l) => l.couponId === coupon.id);
-  const trendData = getUsageTrendData(coupon.id);
-
+  const [coupon, setCoupon] = useState<Coupon | null>(null);
+  const [usageLogs, setUsageLogs] = useState<CouponUsage[]>([]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
-  const [status, setStatus] = useState(coupon.status);
+  const [status, setStatus] = useState<CouponStatus>('inactive');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadCoupon = async () => {
+      if (!id) return;
+      setIsLoading(true);
+      try {
+        const [detail, usage] = await Promise.all([
+          fetchAdminCouponById(id),
+          fetchAdminCouponUsage({ couponId: id, limit: 200 }),
+        ]);
+        setCoupon(detail);
+        setUsageLogs(usage);
+        if (detail?.status) {
+          setStatus(detail.status);
+        }
+      } catch (error) {
+        console.error('Failed to load coupon:', error);
+        toast.error('Unable to load coupon details');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCoupon();
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="py-24 text-center text-sm text-muted-foreground">
+        Loading coupon details...
+      </div>
+    );
+  }
+
+  if (!coupon) {
+    return (
+      <div className="py-24 text-center text-sm text-muted-foreground">
+        Coupon not found.
+      </div>
+    );
+  }
+
+  const logs = usageLogs.filter((l) => l.couponId === coupon.id);
+  const trendData = buildUsageTrendFromLogs(logs);
 
   const usagePercent = getUsagePercent({ ...coupon, status });
   const remaining = coupon.usageLimit > 0 ? coupon.usageLimit - coupon.usedCount : null;
@@ -158,20 +212,46 @@ export default function CouponDetailPage() {
     if (status === 'active') {
       setDeactivateOpen(true);
     } else {
-      setStatus('active');
-      toast.success(`Coupon "${coupon.code}" activated`);
+      updateAdminCouponStatus(coupon.id, 'active')
+        .then((updated) => {
+          if (updated) {
+            setCoupon(updated);
+            setStatus('active');
+            toast.success(`Coupon "${coupon.code}" activated`);
+          }
+        })
+        .catch(() => {
+          toast.error('Unable to activate coupon');
+        });
     }
   };
 
   const confirmDeactivate = () => {
-    setStatus('inactive');
-    toast.success(`Coupon "${coupon.code}" deactivated`);
-    setDeactivateOpen(false);
+    updateAdminCouponStatus(coupon.id, 'inactive')
+      .then((updated) => {
+        if (updated) {
+          setCoupon(updated);
+          setStatus('inactive');
+          toast.success(`Coupon "${coupon.code}" deactivated`);
+        }
+      })
+      .catch(() => {
+        toast.error('Unable to deactivate coupon');
+      })
+      .finally(() => {
+        setDeactivateOpen(false);
+      });
   };
 
   const handleDelete = () => {
-    toast.success(`Coupon "${coupon.code}" deleted`);
-    navigate('/admin/coupons');
+    deleteAdminCoupon(coupon.id)
+      .then(() => {
+        toast.success(`Coupon "${coupon.code}" deleted`);
+        navigate('/admin/coupons');
+      })
+      .catch(() => {
+        toast.error('Unable to delete coupon');
+      });
   };
 
   const copyCode = () => {
@@ -370,24 +450,18 @@ export default function CouponDetailPage() {
                     <span className="capitalize">{coupon.discountType.replace('_', ' ')}</span>
                   </InfoRow>
                   <InfoRow label="Start date">
-                    {new Date(coupon.startDate).toLocaleString('en-IN', {
-                      day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                    })}
+                      {formatDateTime(coupon.startDate)}
                   </InfoRow>
                   <InfoRow label="Expiry date">
-                    {new Date(coupon.endDate).toLocaleString('en-IN', {
-                      day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                    })}
+                      {formatDateTime(coupon.endDate)}
                   </InfoRow>
                   {coupon.scheduledActivation && (
                     <InfoRow label="Auto-activates">
-                      {new Date(coupon.scheduledActivation).toLocaleString('en-IN', {
-                        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-                      })}
+                        {formatDateTime(coupon.scheduledActivation)}
                     </InfoRow>
                   )}
                   <InfoRow label="Created by">
-                    {coupon.createdBy} · {new Date(coupon.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {coupon.createdBy} · {formatDateTime(coupon.createdAt)}
                   </InfoRow>
                   {coupon.tags && coupon.tags.length > 0 && (
                     <InfoRow label="Tags">

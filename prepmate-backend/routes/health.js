@@ -3,6 +3,24 @@ const router = express.Router();
 const healthCheck = require("../utils/healthCheck");
 const logger = require("../utils/logger");
 
+const serverStartedAt = new Date();
+
+const formatUptime = (seconds) => {
+  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+
+  return {
+    days,
+    hours,
+    minutes,
+    seconds: secs,
+    label: `${days}d ${hours}h ${minutes}m ${secs}s`,
+  };
+};
+
 // Basic health check
 router.get("/", async (req, res) => {
   try {
@@ -209,6 +227,24 @@ router.get("/live", (req, res) => {
     status: "alive",
     timestamp: new Date().toISOString(),
     uptime: healthCheck.getUptime(),
+  });
+});
+
+// Uptime summary endpoint (for keep-alive + status dashboards)
+router.get("/uptime", (req, res) => {
+  const uptimeSeconds = process.uptime();
+  const formatted = formatUptime(uptimeSeconds);
+
+  res.json({
+    success: true,
+    message: "Service uptime",
+    data: {
+      uptimeSeconds,
+      uptime: formatted,
+      startedAt: serverStartedAt.toISOString(),
+      lastReboot: serverStartedAt.toISOString(),
+      now: new Date().toISOString(),
+    },
   });
 });
 

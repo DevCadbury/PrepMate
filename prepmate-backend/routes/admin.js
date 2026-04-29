@@ -12,6 +12,8 @@ const SupportTicket = require("../models/SupportTicket");
 const Notification = require("../models/Notification");
 const Comment = require("../models/Comment");
 const Interview = require("../models/Interview");
+const Coupon = require("../models/Coupon");
+const CouponUsage = require("../models/CouponUsage");
 const {
   authenticateToken,
   authorizeRoles,
@@ -77,6 +79,11 @@ const LEGACY_PERMISSION_KEY_SET = new Set([
 
 const escapeRegex = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const generateCouponCode = (prefix = "") => {
+  const safePrefix = String(prefix || "").toUpperCase();
+  return `${safePrefix}${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+};
 
 const normalizePostModerationStatus = (status) => {
   const normalized = String(status || "").trim().toLowerCase();
@@ -1819,6 +1826,304 @@ router.get(
       });
     } catch (error) {
       console.error("System health error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── ADMIN LOGS (RECENT) ───────────────────────────────────────────────────
+router.get(
+  "/logs/recent",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.LOGS_VIEW]),
+  async (req, res) => {
+    try {
+      const requested = Number(req.query.lines || 200);
+      const limit = Math.min(1000, Math.max(1, requested));
+      const logPath = path.join(__dirname, "..", "logs", "combined.log");
+
+      let lines = [];
+      try {
+        const content = await fs.readFile(logPath, "utf8");
+        lines = content
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .slice(-limit);
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          lines,
+        },
+      });
+    } catch (error) {
+      console.error("Admin logs recent error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+// ─── ADMIN COUPONS ───────────────────────────────────────────────────────────
+router.get(
+  "/coupons",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_VIEW]),
+  async (req, res) => {
+    try {
+      const page = Math.max(1, Number(req.query.page || 1));
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit || 50)));
+      const skip = (page - 1) * limit;
+      const status = req.query.status;
+      const variant = req.query.variant;
+      const search = req.query.search;
+
+      const filter = {};
+      if (status) {
+        const statuses = String(status)
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+        if (statuses.length) {
+          filter.status = { $in: statuses };
+        }
+      }
+      if (variant) {
+        filter.variant = String(variant).trim();
+      }
+      if (search) {
+        const escaped = escapeRegex(search);
+        filter.$or = [
+          { code: { $regex: escaped, $options: "i" } },
+          { description: { $regex: escaped, $options: "i" } },
+        ];
+      }
+
+      const [total, coupons] = await Promise.all([
+        Coupon.countDocuments(filter),
+        Coupon.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          coupons,
+          page,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      console.error("Admin coupons list error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.get(
+  "/coupons/usage",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_VIEW]),
+  async (req, res) => {
+    try {
+      const limit = Math.min(500, Math.max(1, Number(req.query.limit || 100)));
+      const couponId = req.query.couponId;
+      const couponCode = req.query.couponCode;
+
+      const filter = {};
+      if (couponId) {
+        filter.couponId = couponId;
+      }
+      if (couponCode) {
+        filter.couponCode = couponCode;
+      }
+
+      const usage = await CouponUsage.find(filter)
+        .sort({ timestamp: -1, createdAt: -1 })
+        .limit(limit)
+        .lean();
+
+      res.json({
+        success: true,
+        data: {
+          usage,
+        },
+      });
+    } catch (error) {
+      console.error("Admin coupons usage error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.get(
+  "/coupons/:id",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_VIEW]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const coupon = await Coupon.findById(id).lean();
+
+      if (!coupon) {
+        return res.status(404).json({ success: false, message: "Coupon not found" });
+      }
+
+      res.json({ success: true, data: coupon });
+    } catch (error) {
+      console.error("Admin coupon detail error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.post(
+  "/coupons",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_MANAGE]),
+  async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const code = payload.code ? String(payload.code).trim().toUpperCase() : null;
+      const coupon = await Coupon.create({
+        ...payload,
+        code: code || generateCouponCode(payload.prefix),
+      });
+
+      res.status(201).json({ success: true, data: coupon });
+    } catch (error) {
+      if (error?.code === 11000) {
+        return res
+          .status(409)
+          .json({ success: false, message: "Coupon code already exists" });
+      }
+      console.error("Admin coupon create error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.post(
+  "/coupons/bulk",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_MANAGE]),
+  async (req, res) => {
+    try {
+      const count = Math.min(500, Math.max(1, Number(req.body?.count || 1)));
+      const prefix = req.body?.prefix || "";
+      const template = req.body?.template || {};
+      const codes = new Set();
+
+      while (codes.size < count) {
+        codes.add(generateCouponCode(prefix));
+      }
+
+      const docs = Array.from(codes).map((code) => ({
+        ...template,
+        code,
+        prefix: template.prefix ?? prefix,
+      }));
+
+      const created = await Coupon.insertMany(docs, { ordered: false });
+
+      res.status(201).json({ success: true, data: { coupons: created } });
+    } catch (error) {
+      console.error("Admin coupons bulk error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.patch(
+  "/coupons/:id",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_MANAGE]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body || {};
+      if (updates.code) {
+        updates.code = String(updates.code).trim().toUpperCase();
+      }
+
+      const coupon = await Coupon.findByIdAndUpdate(id, updates, {
+        new: true,
+        runValidators: true,
+      });
+
+      if (!coupon) {
+        return res.status(404).json({ success: false, message: "Coupon not found" });
+      }
+
+      res.json({ success: true, data: coupon });
+    } catch (error) {
+      if (error?.code === 11000) {
+        return res
+          .status(409)
+          .json({ success: false, message: "Coupon code already exists" });
+      }
+      console.error("Admin coupon update error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.patch(
+  "/coupons/:id/status",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_MANAGE]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const status = String(req.body?.status || "").trim();
+
+      const coupon = await Coupon.findByIdAndUpdate(
+        id,
+        { status },
+        { new: true, runValidators: true }
+      );
+
+      if (!coupon) {
+        return res.status(404).json({ success: false, message: "Coupon not found" });
+      }
+
+      res.json({ success: true, data: coupon });
+    } catch (error) {
+      console.error("Admin coupon status error:", error);
+      res.status(500).json({ success: false, message: "Internal server error" });
+    }
+  }
+);
+
+router.delete(
+  "/coupons/:id",
+  authenticateToken,
+  authorizeRoles(["admin"]),
+  authorizeAdminPermissions([ADMIN_PERMISSION_KEYS.SETTINGS_MANAGE]),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const coupon = await Coupon.findByIdAndDelete(id);
+
+      if (!coupon) {
+        return res.status(404).json({ success: false, message: "Coupon not found" });
+      }
+
+      res.json({ success: true, data: coupon });
+    } catch (error) {
+      console.error("Admin coupon delete error:", error);
       res.status(500).json({ success: false, message: "Internal server error" });
     }
   }

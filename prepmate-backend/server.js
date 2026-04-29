@@ -10,6 +10,8 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
+const fetch = global.fetch || require("node-fetch");
+
 const {
   apiRoutes,
   healthRoutes,
@@ -262,6 +264,20 @@ const startHttpServer = () => {
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log("Socket.IO server initialized");
+
+    const selfPingEnabled = process.env.SELF_PING_ENABLED !== "false";
+    if (selfPingEnabled) {
+      const selfPingPath = process.env.SELF_PING_PATH || "/api/health/uptime";
+      const selfPingIntervalMs = Number(process.env.SELF_PING_INTERVAL_MS || 30000);
+
+      setInterval(async () => {
+        try {
+          await fetch(`http://127.0.0.1:${PORT}${selfPingPath}`);
+        } catch (error) {
+          console.warn("Self-ping failed:", error?.message || error);
+        }
+      }, selfPingIntervalMs);
+    }
   });
 };
 

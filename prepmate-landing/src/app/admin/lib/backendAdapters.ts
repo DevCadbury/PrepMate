@@ -1,5 +1,6 @@
 import { apiClient } from '../../../lib/apiClient';
 import type { LogActionType, LogCategory, LogEntry } from '../data/logsData';
+import type { Coupon, CouponUsage } from '../data/couponData';
 import type {
   SupportTicket,
   TicketMessage,
@@ -468,6 +469,134 @@ export const fetchRecentLogEntries = async (lines = 200): Promise<LogEntry[]> =>
     .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
   return entries;
+};
+
+const mapBackendCoupon = (record: any): Coupon => ({
+  id: record?._id || record?.id || '',
+  code: record?.code || '',
+  description: record?.description || '',
+  status: record?.status || 'inactive',
+  discountType: record?.discountType || 'percentage',
+  value: Number(record?.value || 0),
+  maxDiscountCap: record?.maxDiscountCap ?? 0,
+  usageLimit: Number(record?.usageLimit || 0),
+  perUserLimit: Number(record?.perUserLimit || 0),
+  oneTimeUse: Boolean(record?.oneTimeUse),
+  usedCount: Number(record?.usedCount || 0),
+  uniqueUsers: Number(record?.uniqueUsers || 0),
+  startDate: record?.startDate ? String(record.startDate) : undefined,
+  endDate: record?.endDate ? String(record.endDate) : undefined,
+  scheduledActivation: record?.scheduledActivation ? String(record.scheduledActivation) : undefined,
+  eligibility: record?.eligibility || { targetAudience: 'all' },
+  restrictions: record?.restrictions || { stackable: false },
+  variant: record?.variant || 'standard',
+  referralUserId: record?.referralUserId || undefined,
+  tier: record?.tier || undefined,
+  prefix: record?.prefix || undefined,
+  createdAt: record?.createdAt || new Date().toISOString(),
+  createdBy: record?.createdBy || 'system',
+  tags: record?.tags || [],
+});
+
+const mapBackendCouponUsage = (record: any): CouponUsage => ({
+  id: record?._id || record?.id || '',
+  couponId: record?.couponId?._id || record?.couponId || '',
+  couponCode: record?.couponCode || undefined,
+  userId: record?.userId || '',
+  userName: record?.userName || '',
+  userEmail: record?.userEmail || '',
+  userRole: record?.userRole || '',
+  timestamp: record?.timestamp || record?.createdAt || new Date().toISOString(),
+  discountApplied: Number(record?.discountApplied || 0),
+  context: record?.context || '',
+  orderId: record?.orderId || undefined,
+  suspicious: Boolean(record?.suspicious),
+  flagReason: record?.flagReason || undefined,
+  device: record?.device || '',
+  country: record?.country || '',
+  ipAddress: record?.ipAddress || '',
+});
+
+export const fetchAdminCoupons = async (params?: {
+  search?: string;
+  status?: string;
+  variant?: string;
+  page?: number;
+  limit?: number;
+}): Promise<{ coupons: Coupon[]; total: number }> => {
+  const query = new URLSearchParams();
+  if (params?.search) query.set('search', params.search);
+  if (params?.status) query.set('status', params.status);
+  if (params?.variant) query.set('variant', params.variant);
+  if (params?.page) query.set('page', String(params.page));
+  if (params?.limit) query.set('limit', String(params.limit));
+
+  const response = await apiClient.get<{
+    data?: { coupons?: any[]; total?: number };
+  }>(`/admin/coupons?${query.toString()}`);
+
+  const rawCoupons = response?.data?.coupons || [];
+  return {
+    coupons: rawCoupons.map(mapBackendCoupon),
+    total: Number(response?.data?.total || rawCoupons.length),
+  };
+};
+
+export const fetchAdminCouponById = async (id: string): Promise<Coupon | null> => {
+  const response = await apiClient.get<{ data?: any }>(`/admin/coupons/${id}`);
+  if (!response?.data) return null;
+  return mapBackendCoupon(response.data);
+};
+
+export const fetchAdminCouponUsage = async (params?: {
+  couponId?: string;
+  couponCode?: string;
+  limit?: number;
+}): Promise<CouponUsage[]> => {
+  const query = new URLSearchParams();
+  if (params?.couponId) query.set('couponId', params.couponId);
+  if (params?.couponCode) query.set('couponCode', params.couponCode);
+  if (params?.limit) query.set('limit', String(params.limit));
+
+  const response = await apiClient.get<{
+    data?: { usage?: any[] };
+  }>(`/admin/coupons/usage?${query.toString()}`);
+
+  const rawUsage = response?.data?.usage || [];
+  return rawUsage.map(mapBackendCouponUsage);
+};
+
+export const updateAdminCouponStatus = async (id: string, status: string): Promise<Coupon | null> => {
+  const response = await apiClient.patch<{ data?: any }>(`/admin/coupons/${id}/status`, { status });
+  if (!response?.data) return null;
+  return mapBackendCoupon(response.data);
+};
+
+export const updateAdminCoupon = async (id: string, updates: Partial<Coupon>): Promise<Coupon | null> => {
+  const response = await apiClient.patch<{ data?: any }>(`/admin/coupons/${id}`, updates);
+  if (!response?.data) return null;
+  return mapBackendCoupon(response.data);
+};
+
+export const deleteAdminCoupon = async (id: string): Promise<boolean> => {
+  await apiClient.delete(`/admin/coupons/${id}`);
+  return true;
+};
+
+export const createAdminCoupon = async (payload: Partial<Coupon>): Promise<Coupon | null> => {
+  const response = await apiClient.post<{ data?: any }>(`/admin/coupons`, payload);
+  if (!response?.data) return null;
+  return mapBackendCoupon(response.data);
+};
+
+export const createAdminCouponBulk = async (payload: {
+  count: number;
+  prefix?: string;
+  template?: Partial<Coupon>;
+}): Promise<Coupon[]> => {
+  const response = await apiClient.post<{ data?: { coupons?: any[] } }>(`/admin/coupons/bulk`, payload);
+  const rawCoupons = response?.data?.coupons || [];
+  return rawCoupons.map(mapBackendCoupon);
 };
 
 export const fetchAssigneeOptions = async (): Promise<AssigneeOption[]> => {

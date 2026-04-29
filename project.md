@@ -198,6 +198,12 @@ Project docs include setup for live interview/call style experiences using:
 - WebRTC patterns
 - VSeeFace avatar pipeline
 - OBS virtual camera routing
+
+## 5. Deployment Notes
+
+- Frontend (Vercel): use [prepmate-landing/vercel.json](prepmate-landing/vercel.json) and set any `REACT_APP_*` env vars in Vercel.
+- Backend (Render): use [render.yaml](render.yaml) with `rootDir` set to `prepmate-backend` and configure `MONGODB_URI`, `JWT_SECRET`, and `CLIENT_URL` in Render.
+- Health + uptime: `GET /api/health/uptime` exposes uptime, and the backend self-pings every 30 seconds by default (override with `SELF_PING_*` env vars).
 - AI voice and response generation integration
 
 This supports high-fidelity mock interview simulations for advanced usage scenarios.

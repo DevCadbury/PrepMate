@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: prepmate-backend
+    env: node
+    plan: free
+    rootDir: prepmate-backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: SELF_PING_ENABLED
+        value: "true"
+      - key: SELF_PING_INTERVAL_MS
+        value: "30000"
+      - key: SELF_PING_PATH
+        value: /api/health/uptime

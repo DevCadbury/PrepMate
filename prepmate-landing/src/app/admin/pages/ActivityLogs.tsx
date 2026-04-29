@@ -24,8 +24,6 @@ import { toast } from 'sonner';
 import {
   type LogEntry,
   type LogCategory,
-  adminLogs as fallbackAdminLogs,
-  userLogs as fallbackUserLogs,
 } from '../data/logsData';
 import { LogCard } from '../components/logs/LogCard';
 import { LogDetailPanel } from '../components/logs/LogDetailPanel';
@@ -119,6 +117,7 @@ export default function ActivityLogsPage() {
         setApiLogs(logs);
       } catch {
         setApiLogs([]);
+        toast.error('Unable to load log data');
       }
     };
 
@@ -126,13 +125,9 @@ export default function ActivityLogsPage() {
   }, []);
 
   const currentLogs = useMemo(() => {
-    if (apiLogs.length > 0) {
-      return activeTab === 'admin'
-        ? apiLogs.filter((log) => log.category !== 'auth')
-        : apiLogs.filter((log) => log.category === 'auth' || log.category === 'user');
-    }
-
-    return activeTab === 'admin' ? fallbackAdminLogs : fallbackUserLogs;
+    return activeTab === 'admin'
+      ? apiLogs.filter((log) => log.category !== 'auth')
+      : apiLogs.filter((log) => log.category === 'auth' || log.category === 'user');
   }, [activeTab, apiLogs]);
 
   const filteredLogs = useMemo(() => {
@@ -154,6 +149,14 @@ export default function ActivityLogsPage() {
   const grouped = useMemo(() => groupByDate(filteredLogs), [filteredLogs]);
   const uniqueActors = useMemo(() => [...new Set(currentLogs.map((log) => log.actor.email))], [currentLogs]);
   const activeFilters = [categoryFilter !== 'all', actorFilter !== 'all'].filter(Boolean).length;
+  const adminLogCount = useMemo(
+    () => apiLogs.filter((log) => log.category !== 'auth').length,
+    [apiLogs]
+  );
+  const userLogCount = useMemo(
+    () => apiLogs.filter((log) => log.category === 'auth' || log.category === 'user').length,
+    [apiLogs]
+  );
 
   const handleTabChange = (value: string) => {
     setActiveTab(value as 'admin' | 'user');
@@ -221,13 +224,13 @@ export default function ActivityLogsPage() {
               <TabsTrigger value="admin" className="text-xs px-3 h-6">
                 Admin Logs
                 <span className="ml-1.5 inline-flex size-4 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
-                  {activeTab === 'admin' ? currentLogs.length : (apiLogs.length > 0 ? apiLogs.filter((log) => log.category !== 'auth').length : fallbackAdminLogs.length)}
+                  {activeTab === 'admin' ? currentLogs.length : adminLogCount}
                 </span>
               </TabsTrigger>
               <TabsTrigger value="user" className="text-xs px-3 h-6">
                 User Logs
                 <span className="ml-1.5 inline-flex size-4 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
-                  {activeTab === 'user' ? currentLogs.length : (apiLogs.length > 0 ? apiLogs.filter((log) => log.category === 'auth' || log.category === 'user').length : fallbackUserLogs.length)}
+                  {activeTab === 'user' ? currentLogs.length : userLogCount}
                 </span>
               </TabsTrigger>
             </TabsList>

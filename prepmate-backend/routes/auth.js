@@ -3,10 +3,7 @@ const { body, validationResult } = require("express-validator");
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/User");
-const {
-  sendVerificationEmail,
-  sendPasswordResetEmail,
-} = require("../utils/emailService");
+const emailService = require("../utils/emailService");
 const { generateToken, verifyToken } = require("../utils/jwtUtils");
 const { asyncHandler } = require("../utils/asyncHandler");
 const logger = require("../utils/logger");
@@ -325,7 +322,7 @@ router.post(
 
     // Send verification email
     try {
-      await sendVerificationEmail(user.email, verificationToken);
+      await emailService.sendVerificationEmail(user.email, verificationToken);
     } catch (error) {
       logger.error("Failed to send verification email:", error);
     }
@@ -689,7 +686,7 @@ router.post(
     // Send password reset email
     let emailSent = true;
     try {
-      await sendPasswordResetEmail(user.email, resetToken);
+      await emailService.sendPasswordResetEmail(user.email, resetToken);
     } catch (error) {
       emailSent = false;
       logger.error("Failed to send password reset email:", error);
@@ -1059,7 +1056,7 @@ router.put(
 
     let emailSent = true;
     try {
-      await sendVerificationEmail(user.email, verificationToken);
+      await emailService.sendVerificationEmail(user.email, verificationToken);
     } catch (sendError) {
       emailSent = false;
       logger.error("Failed to send verification email after email change:", sendError);

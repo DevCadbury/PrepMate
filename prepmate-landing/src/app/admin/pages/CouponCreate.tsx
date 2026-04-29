@@ -7,26 +7,20 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  Plus,
-  X,
   Percent,
   DollarSign,
   Gift,
   Users,
   UserCheck,
   Shield,
-  Globe,
-  Clock,
   Smartphone,
   Monitor,
   Tablet,
   CheckCircle2,
-  AlertCircle,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
-import { Badge } from '../../components/ui/badge';
 import { Separator } from '../../components/ui/separator';
 import { Switch } from '../../components/ui/switch';
 import {
@@ -48,9 +42,11 @@ import {
   CouponStatus,
   CouponVariant,
   TargetAudience,
+  UserTier,
   generateCouponCode,
 } from '../data/couponData';
 import { cn } from '../../lib/utils';
+import { createAdminCoupon } from '../lib/backendAdapters';
 
 // ─── Section wrapper ───────────────────────────────────────────────────────
 
@@ -265,10 +261,60 @@ export default function CouponCreate() {
     const err = validate();
     if (err) { toast.error(err); return; }
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setSaving(false);
-    toast.success(asDraft ? 'Draft saved' : `Coupon "${form.code}" created successfully`);
-    navigate('/admin/coupons');
+    try {
+      const tierValue = ['basic', 'premium', 'enterprise'].includes(form.tier)
+        ? (form.tier as UserTier)
+        : undefined;
+      const payload = {
+        code: form.code,
+        description: form.description,
+        status: asDraft ? 'inactive' : form.status,
+        variant: form.variant,
+        discountType: form.discountType,
+        value: Number(form.value),
+        maxDiscountCap: form.maxDiscountCap ? Number(form.maxDiscountCap) : undefined,
+        usageLimit: form.usageLimit ? Number(form.usageLimit) : 0,
+        perUserLimit: form.perUserLimit ? Number(form.perUserLimit) : 0,
+        oneTimeUse: form.oneTimeUse,
+        startDate: form.startDate ? new Date(`${form.startDate}T${form.startTime}:00`).toISOString() : undefined,
+        endDate: form.endDate ? new Date(`${form.endDate}T${form.endTime}:00`).toISOString() : undefined,
+        scheduledActivation: form.scheduledActivation
+          ? new Date(`${form.startDate}T${form.startTime}:00`).toISOString()
+          : undefined,
+        eligibility: {
+          targetAudience: form.targetAudience,
+          specificUsers: form.specificUsers
+            ? form.specificUsers.split(',').map((u) => u.trim()).filter(Boolean)
+            : undefined,
+          userRoles: form.userRoles,
+          minimumCondition: form.minimumCondition as any,
+          minimumValue: form.minimumValue ? Number(form.minimumValue) : undefined,
+          triggerEvent: form.triggerEvent as any,
+        },
+        restrictions: {
+          stackable: form.stackable,
+          countries: form.countries
+            ? form.countries.split(',').map((c) => c.trim().toUpperCase()).filter(Boolean)
+            : undefined,
+          devices: form.devices as any,
+          timeWindow: form.timeWindowEnabled
+            ? { start: form.timeWindowStart, end: form.timeWindowEnd }
+            : undefined,
+        },
+        prefix: form.prefix || undefined,
+        tier: tierValue,
+        referralUserId: form.referralUser || undefined,
+      };
+
+      await createAdminCoupon(payload);
+      toast.success(asDraft ? 'Draft saved' : `Coupon "${form.code}" created successfully`);
+      navigate('/admin/coupons');
+    } catch (error) {
+      console.error('Failed to create coupon:', error);
+      toast.error('Unable to create coupon');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────

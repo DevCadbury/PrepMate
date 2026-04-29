@@ -8,7 +8,6 @@ import {
 } from '../../../components/ui/sheet';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
-import { Separator } from '../../../components/ui/separator';
 import { Progress } from '../../../components/ui/progress';
 import {
   ExternalLink,
@@ -52,6 +51,13 @@ const DiscountIcon = ({ type }: { type: string }) => {
   if (type === 'percentage') return <Percent className="size-4" />;
   if (type === 'fixed') return <DollarSign className="size-4" />;
   return <Gift className="size-4" />;
+};
+
+const formatDateLabel = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 };
 
 export default function CouponDetailsDrawer({
@@ -200,18 +206,18 @@ export default function CouponDetailsDrawer({
               <div className="flex items-center gap-2 text-[13px]">
                 <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
                 <span className="text-muted-foreground">Start:</span>
-                <span className="text-foreground">{new Date(coupon.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                <span className="text-foreground">{formatDateLabel(coupon.startDate)}</span>
               </div>
               <div className="flex items-center gap-2 text-[13px]">
                 <Clock className="size-3.5 text-amber-500 shrink-0" />
                 <span className="text-muted-foreground">Expires:</span>
-                <span className="text-foreground">{new Date(coupon.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                <span className="text-foreground">{formatDateLabel(coupon.endDate)}</span>
               </div>
               {coupon.scheduledActivation && (
                 <div className="flex items-center gap-2 text-[13px]">
                   <Calendar className="size-3.5 text-blue-500 shrink-0" />
                   <span className="text-muted-foreground">Auto-activates:</span>
-                  <span className="text-foreground">{new Date(coupon.scheduledActivation).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                  <span className="text-foreground">{formatDateLabel(coupon.scheduledActivation)}</span>
                 </div>
               )}
             </div>

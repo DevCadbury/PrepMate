@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ElementType } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -10,7 +10,6 @@ import {
   Edit,
   Power,
   PowerOff,
-  ChevronRight,
   Zap,
   TrendingUp,
   AlertTriangle,
@@ -18,15 +17,10 @@ import {
   Clock,
   BarChart3,
   Tag,
-  Users,
-  RefreshCw,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
-import { Separator } from '../../components/ui/separator';
 import {
   Select,
   SelectContent,
@@ -67,19 +61,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '../../components/ui/tooltip';
 import { toast } from 'sonner';
 import {
   Coupon,
   CouponStatus,
   CouponVariant,
-  mockCoupons,
-  mockUsageLogs,
+  CouponUsage,
   formatDiscountValue,
   getUsagePercent,
   isNearLimit,
@@ -89,6 +76,14 @@ import {
 } from '../data/couponData';
 import CouponDetailsDrawer from '../components/coupons/CouponDetailsDrawer';
 import { cn } from '../../lib/utils';
+import {
+  createAdminCoupon,
+  createAdminCouponBulk,
+  deleteAdminCoupon,
+  fetchAdminCouponUsage,
+  fetchAdminCoupons,
+  updateAdminCouponStatus,
+} from '../lib/backendAdapters';
 
 const StatCard = ({
   label,
@@ -132,10 +127,23 @@ const variantOptions: { value: CouponVariant | 'all'; label: string }[] = [
   { value: 'bulk', label: 'Bulk' },
 ];
 
+const formatShortDate = (value?: string, withYear = false) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    ...(withYear ? { year: '2-digit' } : {}),
+  });
+};
+
 export default function CouponsPage() {
   const navigate = useNavigate();
 
-  const [coupons, setCoupons] = useState<Coupon[]>(mockCoupons);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [usageLogs, setUsageLogs] = useState<CouponUsage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<CouponStatus | 'all'>('all');
   const [variantFilter, setVariantFilter] = useState<CouponVariant | 'all'>('all');
@@ -155,7 +163,7 @@ export default function CouponsPage() {
   const totalActive = coupons.filter((c) => c.status === 'active').length;
   const totalScheduled = coupons.filter((c) => c.status === 'scheduled').length;
   const totalRedemptions = coupons.reduce((acc, c) => acc + c.usedCount, 0);
-  const suspiciousCount = mockUsageLogs.filter((l) => l.suspicious).length;
+  const suspiciousCount = usageLogs.filter((l) => l.suspicious).length;
 
   // ─── Filtered & sorted coupons ───────────────────────────────────────────
 
@@ -171,11 +179,36 @@ export default function CouponsPage() {
     if (variantFilter !== 'all') result = result.filter((c) => c.variant === variantFilter);
     result.sort((a, b) => {
       if (sortBy === 'usedCount') return b.usedCount - a.usedCount;
-      if (sortBy === 'endDate') return new Date(a.endDate).getTime() - new Date(b.endDate).getTime();
+      if (sortBy === 'endDate') {
+        const aTime = a.endDate ? new Date(a.endDate).getTime() : 0;
+        const bTime = b.endDate ? new Date(b.endDate).getTime() : 0;
+        return aTime - bTime;
+      }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
     return result;
   }, [coupons, search, statusFilter, variantFilter, sortBy]);
+
+  useEffect(() => {
+    const loadCoupons = async () => {
+      setIsLoading(true);
+      try {
+        const [couponResponse, usageResponse] = await Promise.all([
+          fetchAdminCoupons({ limit: 200 }),
+          fetchAdminCouponUsage({ limit: 500 }),
+        ]);
+        setCoupons(couponResponse.coupons);
+        setUsageLogs(usageResponse);
+      } catch (error) {
+        console.error('Failed to load coupons:', error);
+        toast.error('Unable to load coupon data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCoupons();
+  }, []);
 
   // ─── Actions ─────────────────────────────────────────────────────────────
 
@@ -193,69 +226,87 @@ export default function CouponsPage() {
     }
   };
 
-  const applyToggle = (coupon: Coupon) => {
-    setCoupons((prev) =>
-      prev.map((c) =>
-        c.id === coupon.id
-          ? { ...c, status: c.status === 'active' ? 'inactive' : 'active' }
-          : c
-      )
-    );
+  const applyToggle = async (coupon: Coupon) => {
     const newStatus = coupon.status === 'active' ? 'inactive' : 'active';
-    toast.success(`Coupon "${coupon.code}" ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
-    setToggleTarget(null);
+    try {
+      const updated = await updateAdminCouponStatus(coupon.id, newStatus);
+      if (updated) {
+        setCoupons((prev) => prev.map((c) => (c.id === coupon.id ? updated : c)));
+        toast.success(`Coupon "${coupon.code}" ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
+      }
+    } catch (error) {
+      console.error('Failed to update coupon status:', error);
+      toast.error('Unable to update coupon status');
+    } finally {
+      setToggleTarget(null);
+    }
   };
 
   const handleDelete = (coupon: Coupon) => setDeleteTarget(coupon);
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    setCoupons((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-    toast.success(`Coupon "${deleteTarget.code}" deleted`);
-    setDeleteTarget(null);
+    try {
+      await deleteAdminCoupon(deleteTarget.id);
+      setCoupons((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      toast.success(`Coupon "${deleteTarget.code}" deleted`);
+    } catch (error) {
+      console.error('Failed to delete coupon:', error);
+      toast.error('Unable to delete coupon');
+    } finally {
+      setDeleteTarget(null);
+    }
   };
 
-  const handleDuplicate = (coupon: Coupon) => {
+  const handleDuplicate = async (coupon: Coupon) => {
     const code = generateCouponCode(coupon.code.split('_')[0]);
-    const newCoupon: Coupon = {
-      ...coupon,
-      id: `c${Date.now()}`,
-      code,
-      status: 'inactive',
-      usedCount: 0,
-      uniqueUsers: 0,
-      createdAt: new Date().toISOString(),
-      description: `[Copy] ${coupon.description}`,
-    };
-    setCoupons((prev) => [newCoupon, ...prev]);
-    toast.success(`Duplicated as "${code}"`);
+    try {
+      const created = await createAdminCoupon({
+        ...coupon,
+        code,
+        status: 'inactive',
+        usedCount: 0,
+        uniqueUsers: 0,
+        createdAt: new Date().toISOString(),
+        description: `[Copy] ${coupon.description}`,
+      });
+      if (created) {
+        setCoupons((prev) => [created, ...prev]);
+        toast.success(`Duplicated as "${code}"`);
+      }
+    } catch (error) {
+      console.error('Failed to duplicate coupon:', error);
+      toast.error('Unable to duplicate coupon');
+    }
   };
 
-  const handleBulkGenerate = () => {
-    const newCoupons: Coupon[] = Array.from({ length: bulkCount }, (_, i) => ({
-      id: `c${Date.now()}_${i}`,
-      code: generateCouponCode(bulkPrefix),
-      description: `Bulk-generated coupon — ${bulkPrefix} batch`,
-      status: 'inactive' as const,
-      discountType: 'percentage' as const,
-      value: 10,
-      usageLimit: 1,
-      perUserLimit: 1,
-      oneTimeUse: true,
-      usedCount: 0,
-      uniqueUsers: 0,
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-      eligibility: { targetAudience: 'all' as const },
-      restrictions: { stackable: false },
-      variant: 'bulk' as const,
-      prefix: bulkPrefix,
-      createdAt: new Date().toISOString(),
-      createdBy: 'Admin User',
-    }));
-    setCoupons((prev) => [...newCoupons, ...prev]);
-    toast.success(`${bulkCount} coupons generated with prefix "${bulkPrefix}"`);
-    setBulkDialogOpen(false);
+  const handleBulkGenerate = async () => {
+    try {
+      const created = await createAdminCouponBulk({
+        count: bulkCount,
+        prefix: bulkPrefix,
+        template: {
+          description: `Bulk-generated coupon — ${bulkPrefix} batch`,
+          status: 'inactive',
+          discountType: 'percentage',
+          value: 10,
+          usageLimit: 1,
+          perUserLimit: 1,
+          oneTimeUse: true,
+          eligibility: { targetAudience: 'all' },
+          restrictions: { stackable: false },
+          variant: 'bulk',
+          prefix: bulkPrefix,
+          createdBy: 'Admin User',
+        },
+      });
+      setCoupons((prev) => [...created, ...prev]);
+      toast.success(`${created.length} coupons generated with prefix "${bulkPrefix}"`);
+      setBulkDialogOpen(false);
+    } catch (error) {
+      console.error('Failed to bulk generate coupons:', error);
+      toast.error('Unable to generate coupons');
+    }
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -355,7 +406,13 @@ export default function CouponsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-14 text-[13px] text-muted-foreground">
+                  Loading coupons...
+                </TableCell>
+              </TableRow>
+            ) : filtered.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-14 text-[13px] text-muted-foreground">
                   No coupons match your filters
@@ -450,11 +507,11 @@ export default function CouponsPage() {
                     {/* Validity */}
                     <TableCell className="py-3">
                       <p className="text-[12px] text-foreground">
-                        {new Date(coupon.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                        {formatShortDate(coupon.startDate)}
                       </p>
                       <p className="text-[11px] text-muted-foreground flex items-center gap-0.5">
                         <Clock className="size-2.5" />
-                        {new Date(coupon.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}
+                        {formatShortDate(coupon.endDate, true)}
                       </p>
                     </TableCell>
 
@@ -513,7 +570,7 @@ export default function CouponsPage() {
       {/* ─── Details Drawer ─────────────────────────────────────────────────── */}
       <CouponDetailsDrawer
         coupon={selectedCoupon}
-        usageLogs={mockUsageLogs}
+        usageLogs={usageLogs}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         onEdit={() => navigate('/admin/coupons/create')}
