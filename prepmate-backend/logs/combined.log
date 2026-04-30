@@ -7942,3 +7942,4 @@
 {"level":"info","message":"password reset email sent via jsonTransport","service":"prepmate-backend","timestamp":"2026-04-30 00:11:58"}
 {"level":"info","message":"password reset email sent via jsonTransport","service":"prepmate-backend","timestamp":"2026-04-30 00:11:59"}
 {"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-30 10:44:41"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-30 10:50:48"}
