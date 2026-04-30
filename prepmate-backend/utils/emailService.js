@@ -84,13 +84,13 @@ class EmailService {
   }
 
   getFromAddress() {
-    const fromName = process.env.SENDGRID_FROM_NAME || "PrepMate";
+    const fromName = process.env.SMTP_FROM_NAME || process.env.SENDGRID_FROM_NAME || "iPrepmate";
     const fromEmail =
-      process.env.SENDGRID_FROM_EMAIL ||
       process.env.SMTP_FROM_EMAIL ||
       process.env.SMTP_USER ||
+      process.env.SENDGRID_FROM_EMAIL ||
       process.env.GMAIL_USER ||
-      "noreply@prepmate.local";
+      "noreply@iprepmate.local";
 
     return `"${fromName}" <${fromEmail}>`;
   }
@@ -121,17 +121,21 @@ class EmailService {
     const mailOptions = {
       from: this.getFromAddress(),
       to: email,
-      subject: "Verify Your PrepMate Account",
+      subject: "Verify Your iPrepmate Account",
       html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Welcome to PrepMate!</h2>
-            <p>Thank you for signing up. Please verify your email address by clicking the button below:</p>
-            <a href="${verificationUrl}" style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Verify Email</a>
-            <p>If the button doesn't work, copy and paste this link into your browser:</p>
-            <p>${verificationUrl}</p>
-            <p>This link will expire in 24 hours.</p>
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f5f5f5; padding: 20px; border-radius: 8px;">
+          <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h2 style="color: #1a3a52; margin-bottom: 20px; font-size: 24px;">Welcome to iPrepmate</h2>
+            <p style="color: #333; line-height: 1.6; margin-bottom: 15px;">Thank you for creating your iPrepmate account. To get started, please verify your email address by clicking the button below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${verificationUrl}" style="background-color: #3b82f6; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600; font-size: 16px;">Verify Email Address</a>
+            </div>
+            <p style="color: #666; line-height: 1.6; margin-bottom: 15px;">Or copy and paste this link into your browser:</p>
+            <p style="color: #3b82f6; word-break: break-all; margin-bottom: 20px;">${verificationUrl}</p>
+            <p style="color: #999; font-size: 14px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">This link will expire in 24 hours. If you did not create this account, please ignore this email.</p>
           </div>
-        `,
+        </div>
+      `,
     };
 
     await this.deliver(mailOptions, "verification email");
@@ -144,18 +148,21 @@ class EmailService {
     const mailOptions = {
       from: this.getFromAddress(),
       to: email,
-      subject: "Reset Your PrepMate Password",
+      subject: "Reset Your iPrepmate Password",
       html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Password Reset Request</h2>
-            <p>You requested a password reset for your PrepMate account. Click the button below to reset your password:</p>
-            <a href="${resetUrl}" style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Reset Password</a>
-            <p>If the button doesn't work, copy and paste this link into your browser:</p>
-            <p>${resetUrl}</p>
-            <p>This link will expire in 10 minutes.</p>
-            <p>If you didn't request this reset, please ignore this email.</p>
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f5f5f5; padding: 20px; border-radius: 8px;">
+          <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <h2 style="color: #1a3a52; margin-bottom: 20px; font-size: 24px;">Password Reset Request</h2>
+            <p style="color: #333; line-height: 1.6; margin-bottom: 15px;">We received a request to reset the password for your iPrepmate account. Click the button below to create a new password:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetUrl}" style="background-color: #ef4444; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600; font-size: 16px;">Reset Password</a>
+            </div>
+            <p style="color: #666; line-height: 1.6; margin-bottom: 15px;">Or copy and paste this link into your browser:</p>
+            <p style="color: #ef4444; word-break: break-all; margin-bottom: 20px;">${resetUrl}</p>
+            <p style="color: #999; font-size: 14px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">This link will expire in 10 minutes. If you did not request a password reset, please ignore this email. Your account remains secure.</p>
           </div>
-        `,
+        </div>
+      `,
     };
 
     await this.deliver(mailOptions, "password reset email");
@@ -167,19 +174,23 @@ class EmailService {
       const mailOptions = {
         from: this.getFromAddress(),
         to: email,
-        subject: "Welcome to PrepMate!",
+        subject: "Welcome to iPrepmate",
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Welcome to PrepMate, ${name}!</h2>
-            <p>We're excited to have you on board. Here's what you can do to get started:</p>
-            <ul>
-              <li>Complete your profile</li>
-              <li>Explore our learning roadmaps</li>
-              <li>Try your first AI-powered mock interview</li>
-              <li>Join the community</li>
-            </ul>
-            <p>If you have any questions, feel free to reach out to our support team.</p>
-            <p>Happy learning!</p>
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f5f5f5; padding: 20px; border-radius: 8px;">
+            <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+              <h2 style="color: #1a3a52; margin-bottom: 20px; font-size: 24px;">Welcome to iPrepmate</h2>
+              <p style="color: #333; line-height: 1.6; margin-bottom: 20px;">Hello ${name},</p>
+              <p style="color: #333; line-height: 1.6; margin-bottom: 20px;">Thank you for joining iPrepmate. We are committed to helping you prepare effectively for your interviews and career goals.</p>
+              <p style="color: #333; line-height: 1.6; margin-bottom: 20px;">Here are some recommended next steps:</p>
+              <ul style="color: #333; line-height: 1.8; margin-bottom: 20px; padding-left: 20px;">
+                <li>Complete your profile information</li>
+                <li>Explore our comprehensive learning resources</li>
+                <li>Take a mock interview to practice</li>
+                <li>Connect with our community</li>
+              </ul>
+              <p style="color: #333; line-height: 1.6; margin-bottom: 15px;">Should you need assistance or have questions, our support team is here to help.</p>
+              <p style="color: #999; font-size: 14px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">Best regards,<br/>The iPrepmate Team</p>
+            </div>
           </div>
         `,
       };

@@ -194,10 +194,11 @@ router.put(
       .optional()
       .isBoolean()
       .withMessage("Push notifications must be a boolean"),
-    body("preferences.notifications.sms")
-      .optional()
-      .isBoolean()
-      .withMessage("SMS notifications must be a boolean"),
+    // SMS notifications removed - no longer supported
+    // body("preferences.notifications.sms")
+    //   .optional()
+    //   .isBoolean()
+    //   .withMessage("SMS notifications must be a boolean"),
     body("preferences.privacy.profileVisibility")
       .optional()
       .isIn(["public", "private", "friends"])

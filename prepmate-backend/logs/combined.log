@@ -7943,3 +7943,7 @@
 {"level":"info","message":"password reset email sent via jsonTransport","service":"prepmate-backend","timestamp":"2026-04-30 00:11:59"}
 {"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-30 10:44:41"}
 {"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-30 10:50:48"}
+{"level":"info","message":"Token blacklisted for 604158 seconds: eyJhbGciOiJIUzI1NiIs...","service":"prepmate-backend","timestamp":"2026-04-30 10:56:01"}
+{"level":"info","message":"Token blacklisted for 604794 seconds: eyJhbGciOiJIUzI1NiIs...","service":"prepmate-backend","timestamp":"2026-04-30 10:57:08"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-30 10:59:38"}
+{"level":"warn","message":"Email transport is not fully configured. Falling back to jsonTransport for development.","service":"prepmate-backend","timestamp":"2026-04-30 11:01:46"}
