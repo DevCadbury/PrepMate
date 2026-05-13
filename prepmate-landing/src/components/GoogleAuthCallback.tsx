@@ -1,10 +1,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import OnboardingForm from "./OnboardingForm";
 import { motion } from "framer-motion";
 import { Loader2, AlertCircle } from "lucide-react";
-import { apiClient } from "../lib/apiClient";
 
 const GoogleAuthCallback: React.FC = () => {
   const navigate = useNavigate();
@@ -12,8 +10,6 @@ const GoogleAuthCallback: React.FC = () => {
   const { loginWithToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [googleUserData, setGoogleUserData] = useState<any>(null);
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -30,8 +26,6 @@ const GoogleAuthCallback: React.FC = () => {
         console.log("Processing Google OAuth callback...");
         const token = searchParams.get("token");
         const profileComplete = searchParams.get("profileComplete");
-        const googleDataId = searchParams.get("googleDataId");
-
         if (!token) {
           setError("No authentication token received");
           setLoading(false);
@@ -47,32 +41,9 @@ const GoogleAuthCallback: React.FC = () => {
           await loginWithToken(token);
           navigate("/dashboard");
         } else {
-          // Profile incomplete, fetch Google data and show onboarding form
-          console.log("Profile incomplete, fetching Google data...");
-          if (googleDataId) {
-            try {
-              const response = await apiClient.fetch(
-                `/auth/google-data/${googleDataId}`,
-                {
-                  method: "GET",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                }
-              );
-
-              if (response.ok) {
-                const data = await response.json();
-                setGoogleUserData(data.data);
-              } else {
-                console.error("Failed to fetch Google data");
-              }
-            } catch (e) {
-              console.error("Error fetching Google data:", e);
-            }
-          }
-          setShowOnboarding(true);
-          setLoading(false);
+          // Profile incomplete, redirect to onboarding flow
+          console.log("Profile incomplete, redirecting to onboarding...");
+          navigate("/onboarding");
         }
       } catch (error) {
         console.error("Google auth callback error:", error);
@@ -83,56 +54,6 @@ const GoogleAuthCallback: React.FC = () => {
 
     handleGoogleCallback();
   }, [searchParams, navigate, loginWithToken]);
-
-  const handleOnboardingComplete = async (onboardingData: any) => {
-    try {
-      const response = await apiClient.fetch(
-        "/auth/complete-google-profile",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          body: JSON.stringify(onboardingData),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-
-        // Update token with new one
-        localStorage.setItem("token", data.data.token);
-
-        // Login with updated user data
-        await loginWithToken(data.data.token);
-
-        // Redirect to dashboard
-        navigate("/dashboard");
-      } else {
-        const errorData = await response.json();
-        alert(`Failed to complete profile: ${errorData.message}`);
-      }
-    } catch (error) {
-      console.error("Error completing profile:", error);
-      alert("Failed to complete profile. Please try again.");
-    }
-  };
-
-  const handleOnboardingSkip = () => {
-    // Redirect to dashboard even with incomplete profile
-    navigate("/dashboard");
-  };
-
-  if (showOnboarding) {
-    return (
-      <OnboardingForm
-        googleUserData={googleUserData}
-        onComplete={handleOnboardingComplete}
-        onSkip={handleOnboardingSkip}
-      />
-    );
-  }
 
   if (loading) {
     return (

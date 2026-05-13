@@ -119,10 +119,10 @@ export default function CouponDetailsDrawer({
             </div>
             <div className="flex flex-col gap-1.5 items-end shrink-0">
               <span className={cn('text-xs px-2 py-0.5 rounded-full border', getCouponStatusColor(coupon.status))}>
-                {coupon.status.charAt(0).toUpperCase() + coupon.status.slice(1)}
+                {coupon.status?.charAt(0).toUpperCase() + (coupon.status || '').slice(1)}
               </span>
               <span className={cn('text-xs px-2 py-0.5 rounded-full border', getVariantColor(coupon.variant))}>
-                {coupon.variant.charAt(0).toUpperCase() + coupon.variant.slice(1)}
+                {coupon.variant?.charAt(0).toUpperCase() + (coupon.variant || '').slice(1)}
               </span>
             </div>
           </div>
@@ -308,7 +308,7 @@ export default function CouponDetailsDrawer({
                   <div key={log.id} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <span className="text-[10px] text-primary">{log.userName.charAt(0)}</span>
+                        <span className="text-[10px] text-primary">{(log.userName || '?').charAt(0).toUpperCase()}</span>
                       </div>
                       <div className="min-w-0">
                         <p className="text-[13px] text-foreground truncate">{log.userName}</p>

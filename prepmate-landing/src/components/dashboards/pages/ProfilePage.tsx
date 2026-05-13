@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { useToast, ToastContainer } from "../../ui/toast";
+import { useToast } from "../../ui/toast";
 import PostCard, { PostCardPost } from "../../ui/post-card";
 import PostCreator from "../../ui/post-creator";
 import {
@@ -210,7 +210,7 @@ interface ProfilePageProps {
 const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   const { user, updateProfile, logout } = useAuth();
   const { userId } = useParams<{ userId: string }>();
-  const { toasts, success, error, warning, info, removeToast } = useToast();
+  const { success, error, warning, info } = useToast();
 
   // Theme management
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -1807,7 +1807,6 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
 
   return (
     <>
-      <ToastContainer toasts={toasts} onClose={removeToast} />
       <div className="min-h-screen bg-background">
 
         {/* Profile Header Block */}

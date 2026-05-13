@@ -256,7 +256,7 @@ export default function AdminTopbar() {
             <Button variant="ghost" className="gap-2 h-9 px-2">
               <Avatar className="size-7">
                 <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                  {admin?.name.charAt(0)}
+                  {admin?.name?.charAt(0) || '?'}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden sm:flex flex-col items-start text-left">

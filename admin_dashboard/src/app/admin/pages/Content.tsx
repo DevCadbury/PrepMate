@@ -86,8 +86,8 @@ export default function ContentPage() {
 
   const filteredPosts = posts.filter((post) => {
     const matchesSearch =
-      post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      post.author.toLowerCase().includes(searchQuery.toLowerCase());
+      (post.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (post.author || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || post.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -224,7 +224,7 @@ export default function ContentPage() {
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Avatar className="size-7">
-                      <AvatarFallback className="text-[10px]">{post.author.charAt(0)}</AvatarFallback>
+                      <AvatarFallback className="text-[10px]">{(post.author || '?').charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <span className="text-sm">{post.author}</span>
                   </div>

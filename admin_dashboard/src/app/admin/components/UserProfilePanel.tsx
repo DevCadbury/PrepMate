@@ -164,7 +164,7 @@ export default function UserProfilePanel({ user, open, onClose, onAction }: User
             {/* Header */}
             <div className="flex items-start gap-4">
               <Avatar className="size-16 border-2 border-border">
-                <AvatarFallback className="text-xl bg-primary/10 text-primary">{user.name.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="text-xl bg-primary/10 text-primary">{(user.name || '?').charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2">
@@ -429,7 +429,7 @@ export default function UserProfilePanel({ user, open, onClose, onAction }: User
                     <div className="space-y-2">
                       {followers.map((f, i) => (
                         <div key={i} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                          <Avatar className="size-8"><AvatarFallback className="text-[10px]">{f.name.charAt(0)}</AvatarFallback></Avatar>
+                          <Avatar className="size-8"><AvatarFallback className="text-[10px]">{(f.name || '?').charAt(0).toUpperCase()}</AvatarFallback></Avatar>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm">{f.name}</div>
                             <div className="text-[11px] text-muted-foreground">{f.email}</div>
@@ -445,7 +445,7 @@ export default function UserProfilePanel({ user, open, onClose, onAction }: User
                     <div className="space-y-2">
                       {following.map((f, i) => (
                         <div key={i} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                          <Avatar className="size-8"><AvatarFallback className="text-[10px]">{f.name.charAt(0)}</AvatarFallback></Avatar>
+                          <Avatar className="size-8"><AvatarFallback className="text-[10px]">{(f.name || '?').charAt(0).toUpperCase()}</AvatarFallback></Avatar>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm">{f.name}</div>
                             <div className="text-[11px] text-muted-foreground">{f.email}</div>

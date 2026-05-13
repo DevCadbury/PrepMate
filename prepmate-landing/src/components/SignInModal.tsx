@@ -3,13 +3,20 @@ import { motion } from "framer-motion";
 import { XMarkIcon, EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import { useAuth } from "../contexts/AuthContext";
 import { apiClient } from "../lib/apiClient";
+import VerificationDialog from "./VerificationDialog";
 
 interface SignInModalProps {
   onClose: () => void;
+  onSwitchToSignUp: () => void;
 }
 
-const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
-  const { login } = useAuth();
+const SignInModal: React.FC<SignInModalProps> = ({ onClose, onSwitchToSignUp }) => {
+  const {
+    login,
+    verificationEmail,
+    pendingCredentials,
+    clearVerificationState,
+  } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -23,6 +30,8 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotMessage, setForgotMessage] = useState("");
   const [forgotError, setForgotError] = useState("");
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
 
   const validateForm = () => {
     const newErrors: { identifier?: string; password?: string } = {};
@@ -54,8 +63,15 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
     if (!validateForm()) return;
 
     setIsLoading(true);
+    setServerError(null);
     try {
-      await login(identifier, password);
+      const result = await login(identifier, password);
+
+      if (result?.requiresVerification) {
+        setServerError("Email not verified. Please verify to continue.");
+        setShowVerificationDialog(true);
+        return;
+      }
 
       // Close modal
       onClose();
@@ -266,6 +282,25 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
                   </div>
                 )}
 
+                {showVerificationDialog && serverError && (
+                  <VerificationDialog
+                    email={verificationEmail || identifier}
+                    onVerified={async () => {
+                      if (pendingCredentials) {
+                        await login(
+                          pendingCredentials.identifier,
+                          pendingCredentials.password
+                        );
+                      }
+                      clearVerificationState();
+                    }}
+                    onClose={() => {
+                      setShowVerificationDialog(false);
+                      clearVerificationState();
+                    }}
+                  />
+                )}
+
                 {/* Sign In Button */}
                 <button
                   type="submit"
@@ -321,10 +356,14 @@ const SignInModal: React.FC<SignInModalProps> = ({ onClose }) => {
                 <p className="text-sm text-gray-600">
                   Don't have an account?{" "}
                   <button
-                    onClick={onClose}
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onSwitchToSignUp();
+                    }}
                     className="text-primary-600 hover:text-primary-700 font-medium"
                   >
-                    Sign up
+                    Sign up and start free
                   </button>
                 </p>
               </div>

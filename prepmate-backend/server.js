@@ -10,6 +10,7 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
+const { getFrontendOrigins } = require("./utils/urlConfig");
 const fetch = global.fetch || require("node-fetch");
 
 const {
@@ -25,13 +26,13 @@ const socketHandler = require("./socket/socketHandler");
 const app = express();
 const server = createServer(app);
 
+// Resolve allowed frontend origins from env (supports comma-separated list)
+const allowedOrigins = getFrontendOrigins();
+
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: [
-      process.env.FRONTEND_URL || "http://localhost:3000",
-      "https://iprepmate.vercel.app"
-    ],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -48,15 +49,31 @@ socketHandler.initialize(io);
 app.use(helmet());
 app.use(
   cors({
-    origin: [
-      process.env.FRONTEND_URL || "http://localhost:3000",
-      "https://iprepmate.vercel.app"
-    ],
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl)
+      if (!origin) return callback(null, true);
+      // During development, allow common localhost origins to ease testing
+      if (process.env.NODE_ENV === "development") {
+        if (origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {
+          return callback(null, true);
+        }
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      // Deny by returning false (avoids throwing an exception inside CORS middleware)
+      console.warn(`CORS denied origin: ${origin}`);
+      return callback(null, false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+console.log("Allowed CORS origins:", allowedOrigins);
 
 // Rate limiting
 // Very lenient rate limiter for Google OAuth routes
@@ -124,8 +141,6 @@ app.use(passport.session());
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
   next();
 });
 
@@ -271,9 +286,9 @@ const startHttpServer = () => {
     console.log(`Server running on port ${PORT}`);
     console.log("Socket.IO server initialized");
 
-    const selfPingEnabled = process.env.SELF_PING_ENABLED !== "false";
+    const selfPingEnabled = process.env.SELF_PING_ENABLED === "true";
     if (selfPingEnabled) {
-      const selfPingPath = process.env.SELF_PING_PATH || "/api/health/uptime";
+      const selfPingPath = process.env.SELF_PING_PATH || "/health/ping";
       const selfPingIntervalMs = Number(process.env.SELF_PING_INTERVAL_MS || 30000);
 
       setInterval(async () => {

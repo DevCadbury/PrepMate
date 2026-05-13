@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import { useToast, ToastContainer } from "../../ui/toast";
+import { useToast } from "../../ui/toast";
 import {
   Bell,
   User,
@@ -479,7 +479,7 @@ const ToggleSwitch: React.FC<{
 const SettingsPage: React.FC = () => {
   const { user, updateProfile, logout } = useAuth();
   const navigate = useNavigate();
-  const { toasts, success, error, warning, info, removeToast } = useToast();
+  const { success, error, warning, info } = useToast();
   const [activeTab, setActiveTab] = useState<
     "account" | "privacy" | "notifications"
   >("account");
@@ -1512,7 +1512,6 @@ const SettingsPage: React.FC = () => {
 
   return (
     <>
-      <ToastContainer toasts={toasts} onClose={removeToast} />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

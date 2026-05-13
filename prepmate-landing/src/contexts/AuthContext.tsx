@@ -19,8 +19,11 @@ interface User {
   permissions?: string[];
   subscription?: "free" | "basic" | "premium" | "enterprise";
   emailVerified: boolean;
+  isProfileComplete?: boolean;
   profilePicture: string;
   profile?: {
+    firstName?: string;
+    lastName?: string;
     bio?: string;
     location?: string;
     company?: string;
@@ -92,6 +95,19 @@ interface User {
     profileViews?: number;
     lastProfileView?: string;
   };
+  onboarding?: {
+    status?: string;
+    step?: string;
+    source?: string;
+    profileDraft?: {
+      firstName?: string;
+      lastName?: string;
+      dateOfBirth?: string;
+      profilePicture?: string;
+    };
+    usernameDraft?: string;
+    updatedAt?: string;
+  };
   followers?: User[];
   following?: User[];
   followRequests?: User[];
@@ -110,12 +126,18 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  requiresVerification: boolean;
+  verificationEmail: string | null;
+  pendingCredentials: { identifier: string; password: string } | null;
 }
 
 interface AuthContextType extends AuthState {
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<{ requiresVerification?: boolean }>;
+  resendVerification: (email: string) => Promise<{ success: boolean; message?: string; data?: any }>;
   loginWithToken: (token: string) => Promise<void>;
-  register: (userData: RegisterData) => Promise<void>;
+  register: (userData: RegisterData) => Promise<{ ok: boolean; data: any; requiresVerification?: boolean }>;
+  verifySignupOtp: (email: string, otp: string) => Promise<{ success: boolean; data?: any }>;
+  completeProfile: (profileData: { username: string; name: string; role?: string; profilePicture?: string }) => Promise<{ success: boolean; data?: any; message?: string }>;
   logout: () => void;
   updateProfile: (profileData: Partial<User>) => Promise<void>;
   followUser: (userId: string) => Promise<void>;
@@ -124,14 +146,13 @@ interface AuthContextType extends AuthState {
   unblockUser: (userId: string) => Promise<void>;
   clearError: () => void;
   refreshToken: () => Promise<void>;
+  clearVerificationState: () => void;
 }
 
 interface RegisterData {
-  username: string;
-  name: string;
+  name?: string;
   email: string;
   password: string;
-  role?: "student" | "teacher" | "hr";
 }
 
 // Action types
@@ -139,6 +160,8 @@ type AuthAction =
   | { type: "AUTH_START" }
   | { type: "AUTH_SUCCESS"; payload: { user: User; token: string } }
   | { type: "AUTH_FAILURE"; payload: string }
+  | { type: "AUTH_VERIFICATION_REQUIRED"; payload: { email: string; identifier: string; password: string } }
+  | { type: "CLEAR_VERIFICATION" }
   | { type: "LOGOUT" }
   | { type: "UPDATE_USER"; payload: User }
   | { type: "CLEAR_ERROR" }
@@ -151,6 +174,9 @@ const initialState: AuthState = {
   isAuthenticated: !!localStorage.getItem("token"), // Set to true if token exists
   isLoading: true,
   error: null,
+  requiresVerification: false,
+  verificationEmail: null,
+  pendingCredentials: null,
 };
 
 // Reducer
@@ -179,6 +205,28 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
         isAuthenticated: false,
         isLoading: false,
         error: action.payload,
+        requiresVerification: false,
+        verificationEmail: null,
+        pendingCredentials: null,
+      };
+    case "AUTH_VERIFICATION_REQUIRED":
+      return {
+        ...state,
+        isLoading: false,
+        error: null,
+        requiresVerification: true,
+        verificationEmail: action.payload.email,
+        pendingCredentials: {
+          identifier: action.payload.identifier,
+          password: action.payload.password,
+        },
+      };
+    case "CLEAR_VERIFICATION":
+      return {
+        ...state,
+        requiresVerification: false,
+        verificationEmail: null,
+        pendingCredentials: null,
       };
     case "LOGOUT":
       return {
@@ -273,19 +321,30 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       const data = await response.json();
 
       if (response.ok) {
+        if (data?.data?.requiresVerification) {
+          dispatch({
+            type: "AUTH_VERIFICATION_REQUIRED",
+            payload: { email: data?.data?.email || identifier, identifier, password },
+          });
+          return { requiresVerification: true };
+        }
+
         localStorage.setItem("token", data.data.token);
         dispatch({
           type: "AUTH_SUCCESS",
           payload: { user: data.data.user, token: data.data.token },
         });
-      } else {
-        dispatch({
-          type: "AUTH_FAILURE",
-          payload: data.message || "Login failed",
-        });
+        return {};
       }
+
+      // Attach server response to thrown error for UI handling
+      const error: any = new Error(data.message || "Login failed");
+      error.status = response.status;
+      error.data = data;
+      throw error;
     } catch (error) {
-      dispatch({ type: "AUTH_FAILURE", payload: "Network error" });
+      dispatch({ type: "AUTH_FAILURE", payload: (error as any).message || "Network error" });
+      throw error;
     }
   }, []);
 
@@ -321,37 +380,151 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, []);
 
-  // Register function
+  // Register function - starts signup process (creates pending signup, sends OTP)
   const register = async (userData: RegisterData) => {
     dispatch({ type: "AUTH_START" });
 
     try {
-      const response = await apiClient.fetch(`/auth/register`, {
+      // Use start-signup endpoint (doesn't create user yet)
+      const response = await apiClient.fetch(`/auth/start-signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(userData),
+        body: JSON.stringify({
+          email: userData.email,
+          password: userData.password,
+          confirmPassword: userData.password, // Backend validates match
+        }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem("token", data.data.token);
-        dispatch({
-          type: "AUTH_SUCCESS",
-          payload: { user: data.data.user, token: data.data.token },
-        });
+        if (data?.data?.requiresVerification) {
+          dispatch({
+            type: "AUTH_VERIFICATION_REQUIRED",
+            payload: {
+              email: data?.data?.email || userData.email,
+              identifier: userData.email,
+              password: userData.password,
+            },
+          });
+          return { ok: true, data, requiresVerification: true };
+        }
+
+        return { ok: true, data };
       } else {
         dispatch({
           type: "AUTH_FAILURE",
           payload: data.message || "Registration failed",
         });
+        return { ok: false, data };
       }
     } catch (error) {
       dispatch({ type: "AUTH_FAILURE", payload: "Network error" });
+      return { ok: false, data: { message: "Network error" } };
     }
   };
+
+  // Verify signup OTP and create account
+  const verifySignupOtp = async (email: string, otp: string) => {
+    try {
+      const response = await apiClient.fetch(`/auth/verify-signup-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Auto-login after successful verification
+        if (data.data?.token) {
+          localStorage.setItem("token", data.data.token);
+          dispatch({
+            type: "AUTH_SUCCESS",
+            payload: {
+              user: {
+                id: data.data.email,
+                email: data.data.email,
+                name: "",
+                role: "student" as const,
+                emailVerified: true,
+                isProfileComplete: false,
+                profilePicture: "",
+                onboarding: data.data?.onboarding,
+              },
+              token: data.data.token,
+            },
+          });
+        }
+        return { success: true, data };
+      }
+
+      return { success: false, data };
+    } catch (error) {
+      return { success: false, data: { message: "Network error" } };
+    }
+  };
+
+  // Complete profile after email verification
+  const completeProfile = async (profileData: {
+    username: string;
+    name: string;
+    role?: string;
+    profilePicture?: string;
+  }) => {
+    if (!state.token) return { success: false, message: "Not authenticated" };
+
+    try {
+      const response = await apiClient.fetch(`/auth/complete-profile`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${state.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(profileData),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        if (data.data?.token) {
+          localStorage.setItem("token", data.data.token);
+        }
+        dispatch({
+          type: "AUTH_SUCCESS",
+          payload: {
+            user: data.data?.user || state.user!,
+            token: data.data?.token || state.token!,
+          },
+        });
+        return { success: true, data };
+      }
+
+      return { success: false, message: data.message };
+    } catch (error) {
+      return { success: false, message: "Network error" };
+    }
+  };
+
+  // Resend verification helper (OTP + link)
+  const resendVerification = useCallback(async (email: string) => {
+    try {
+      const response = await apiClient.fetch(`/auth/send-verification-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      return { success: response.ok, message: data.message, data: data.data };
+    } catch (err) {
+      return { success: false, message: "Network error" };
+    }
+  }, []);
+
+  const clearVerificationState = useCallback(() => {
+    dispatch({ type: "CLEAR_VERIFICATION" });
+  }, []);
 
   // Logout function
   const logout = useCallback(async () => {
@@ -611,8 +784,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const value: AuthContextType = {
     ...state,
     login,
+    resendVerification,
     loginWithToken,
     register,
+    verifySignupOtp,
+    completeProfile,
     logout,
     updateProfile,
     followUser,
@@ -621,6 +797,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     unblockUser,
     clearError,
     refreshToken,
+    clearVerificationState,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -146,7 +146,7 @@ export default function ReportDrawer({ open, onClose, userName, userEmail, repor
                     : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 }`}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {((f || 'x').charAt(0).toUpperCase() + (f || 'x').slice(1))}
                 {f === 'pending' && pendingCount > 0 && (
                   <span className="ml-1 text-[10px]">({pendingCount})</span>
                 )}
@@ -234,7 +234,7 @@ export default function ReportDrawer({ open, onClose, userName, userEmail, repor
                               {/* Reporter info */}
                               <div className="flex items-center gap-2">
                                 <Avatar className="size-6">
-                                  <AvatarFallback className="text-[10px]">{report.reportedBy.name.charAt(0)}</AvatarFallback>
+                                  <AvatarFallback className="text-[10px]">{(report.reportedBy.name || '?').charAt(0).toUpperCase()}</AvatarFallback>
                                 </Avatar>
                                 <div>
                                   <span className="text-xs">{report.reportedBy.name}</span>

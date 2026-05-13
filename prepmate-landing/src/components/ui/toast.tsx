@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext, createContext, ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
 
@@ -121,9 +121,23 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({
   );
 };
 
-// Toast hook for easy usage
-export const useToast = () => {
+interface ToastContextValue {
+  toasts: ToastProps[];
+  success: (title: string, message?: string, duration?: number) => void;
+  error: (title: string, message?: string, duration?: number) => void;
+  warning: (title: string, message?: string, duration?: number) => void;
+  info: (title: string, message?: string, duration?: number) => void;
+  removeToast: (id: string) => void;
+}
+
+const ToastContext = createContext<ToastContextValue | undefined>(undefined);
+
+export const ToastProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastProps[]>([]);
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
 
   const addToast = (
     type: "success" | "error" | "warning" | "info",
@@ -143,25 +157,28 @@ export const useToast = () => {
     setToasts((prev) => [...prev, newToast]);
   };
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
-
-  const success = (title: string, message?: string, duration?: number) =>
-    addToast("success", title, message, duration);
-  const error = (title: string, message?: string, duration?: number) =>
-    addToast("error", title, message, duration);
-  const warning = (title: string, message?: string, duration?: number) =>
-    addToast("warning", title, message, duration);
-  const info = (title: string, message?: string, duration?: number) =>
-    addToast("info", title, message, duration);
-
-  return {
+  const value: ToastContextValue = {
     toasts,
-    success,
-    error,
-    warning,
-    info,
+    success: (title, message, duration) => addToast("success", title, message, duration),
+    error: (title, message, duration) => addToast("error", title, message, duration),
+    warning: (title, message, duration) => addToast("warning", title, message, duration),
+    info: (title, message, duration) => addToast("info", title, message, duration),
     removeToast,
   };
+
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
+    </ToastContext.Provider>
+  );
+};
+
+// Toast hook for easy usage
+export const useToast = () => {
+  const context = useContext(ToastContext);
+  if (!context) {
+    throw new Error("useToast must be used within ToastProvider");
+  }
+  return context;
 };

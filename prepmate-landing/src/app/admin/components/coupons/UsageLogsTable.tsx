@@ -57,13 +57,13 @@ export default function UsageLogsTable({ logs, showCouponId = false, compact = f
     let result = [...logs];
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = (search || '').toLowerCase();
       result = result.filter(
         (l) =>
-          l.userName.toLowerCase().includes(q) ||
-          l.userEmail.toLowerCase().includes(q) ||
-          l.context.toLowerCase().includes(q) ||
-          l.country.toLowerCase().includes(q)
+          (l?.userName || '').toLowerCase().includes(q) ||
+          (l?.userEmail || '').toLowerCase().includes(q) ||
+          (l?.context || '').toLowerCase().includes(q) ||
+          (l?.country || '').toLowerCase().includes(q)
       );
     }
 
@@ -178,7 +178,7 @@ export default function UsageLogsTable({ logs, showCouponId = false, compact = f
                   <TableCell className="py-2.5">
                     <div className="flex items-center gap-2">
                       <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <span className="text-[10px] text-primary">{log.userName.charAt(0)}</span>
+                        <span className="text-[10px] text-primary">{(log.userName || '?').charAt(0).toUpperCase()}</span>
                       </div>
                       <div className="min-w-0">
                         <p className="text-[13px] text-foreground truncate">{log.userName}</p>

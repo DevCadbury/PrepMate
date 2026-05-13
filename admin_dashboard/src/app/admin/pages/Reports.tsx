@@ -134,8 +134,8 @@ export default function ReportsPage() {
 
   const filteredReports = reports.filter((report) => {
     const matchesSearch =
-      report.reporter.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      report.target.toLowerCase().includes(searchQuery.toLowerCase());
+      (report.reporter || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (report.target || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || report.status === statusFilter;
     const matchesSeverity = severityFilter === 'all' || report.severity === severityFilter;
     return matchesSearch && matchesStatus && matchesSeverity;
@@ -278,7 +278,7 @@ export default function ReportsPage() {
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Avatar className="size-7">
-                      <AvatarFallback className="text-[10px]">{report.reporter.charAt(0)}</AvatarFallback>
+                      <AvatarFallback className="text-[10px]">{(report.reporter || '?').charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
                       <div className="text-sm">{report.reporter}</div>

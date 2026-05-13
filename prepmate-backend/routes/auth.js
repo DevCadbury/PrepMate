@@ -2,7 +2,9 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
+const bcrypt = require("bcryptjs");
 const User = require("../models/User");
+const PendingSignup = require("../models/PendingSignup");
 const emailService = require("../utils/emailService");
 const { generateToken, verifyToken } = require("../utils/jwtUtils");
 const { asyncHandler } = require("../utils/asyncHandler");
@@ -10,15 +12,81 @@ const logger = require("../utils/logger");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { authenticateToken } = require("../middleware/auth");
+const multer = require("multer");
+const { uploadBuffer, isCloudinaryConfigured } = require("../utils/cloudinary");
+const { processImageBuffer } = require("../utils/imageProcessing");
+const { getFrontendBaseUrl, getBackendBaseUrl } = require("../utils/urlConfig");
 const {
   blacklistToken,
   getBlacklistStats,
 } = require("../utils/tokenBlacklist");
+const rateLimit = require("express-rate-limit");
 
 const router = express.Router();
 
+const onboardingUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: Number(process.env.MAX_FILE_SIZE || 5 * 1024 * 1024) },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || "image/jpeg,image/png,image/webp")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (!file.mimetype || !allowedTypes.includes(file.mimetype)) {
+      return cb(new Error("Only image uploads are supported"));
+    }
+    return cb(null, true);
+  },
+});
+
+// Simple in-memory resend tracker per email. Structure:
+// { count: number, firstRequestAt: timestamp, lastSentAt: timestamp }
+// Limits: maxResendsPerWindow per windowMs, and minIntervalBetweenSends (ms)
+const emailResendTracker = new Map();
+const RESEND_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_RESENDS_PER_WINDOW = Number(process.env.RESEND_MAX_PER_DAY) || 5;
+const MIN_RESEND_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes between resends
+
+// IP-level rate limiter for resend endpoint (protects abuse)
+const resendIpLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // max 10 requests per IP per hour
+  message: {
+    success: false,
+    message: "Too many requests from this IP, please try again later.",
+  },
+});
+
+// Rate limiting configuration for signup flow
+const signupRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 attempts per IP per hour
+  message: {
+    success: false,
+    message: "Too many signup attempts. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const verifyOtpRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per IP
+  message: {
+    success: false,
+    message: "Too many verification attempts. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Temporary storage for Google OAuth data (in production, use Redis or similar)
 const googleDataStore = new Map();
+
+const normalizedBaseUrl = getBackendBaseUrl() || "http://localhost:5000";
+const defaultGoogleCallbackUrl = `${normalizedBaseUrl}/api/auth/google/callback`;
+const defaultGoogleAdminCallbackUrl = `${normalizedBaseUrl}/api/auth/admin/google/callback`;
 
 // Helper function to safely update user with retry logic
 const safeUserUpdate = async (user, updates) => {
@@ -76,15 +144,37 @@ const safeSocialOperation = async (operation) => {
   }
 };
 
+const buildOnboardingPayload = (user) => {
+  if (!user) return null;
+
+  if (user.isProfileComplete) {
+    return {
+      status: "complete",
+      step: "complete",
+      source: user.onboarding?.source || "unknown",
+      profileDraft: user.onboarding?.profileDraft || {},
+      usernameDraft: user.onboarding?.usernameDraft || "",
+      updatedAt: user.onboarding?.updatedAt || user.updatedAt || new Date(),
+    };
+  }
+
+  return {
+    status: user.onboarding?.status || "profile",
+    step: user.onboarding?.step || "profile",
+    source: user.onboarding?.source || "unknown",
+    profileDraft: user.onboarding?.profileDraft || {},
+    usernameDraft: user.onboarding?.usernameDraft || "",
+    updatedAt: user.onboarding?.updatedAt || user.updatedAt || new Date(),
+  };
+};
+
 // Google OAuth Strategy
 passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL:
-        process.env.GOOGLE_CALLBACK_URL ||
-        "http://localhost:5000/api/auth/google/callback",
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || defaultGoogleCallbackUrl,
       scope: [
         "profile",
         "email",
@@ -99,6 +189,9 @@ passport.use(
 
         const { id, displayName, emails, photos, _json } = profile;
         const email = emails[0]?.value;
+        const nameParts = String(displayName || "").trim().split(/\s+/).filter(Boolean);
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ");
 
         // Extract additional data from Google profile
         const googleData = {
@@ -158,6 +251,19 @@ passport.use(
           googleId: id,
           emailVerified: true,
           isProfileComplete: false, // New users need to complete profile
+          onboarding: {
+            status: "profile",
+            step: "profile",
+            source: "google",
+            profileDraft: {
+              firstName,
+              lastName,
+              dateOfBirth: _json?.birthday ? new Date(_json.birthday) : undefined,
+              profilePicture: photos?.[0]?.value || "",
+            },
+            usernameDraft: "",
+            updatedAt: new Date(),
+          },
           lastLogin: new Date(),
         });
 
@@ -190,7 +296,8 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID || "default-client-id",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "default-client-secret",
-      callbackURL: "/api/auth/admin/google/callback",
+      callbackURL:
+        process.env.GOOGLE_ADMIN_CALLBACK_URL || defaultGoogleAdminCallbackUrl,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -244,42 +351,30 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// @desc    Register user
-// @route   POST /api/auth/register
+// @desc    Signup user (Updated to use pending signup flow)
+// @route   POST /api/auth/signup
 // @access  Public
 router.post(
-  "/register",
+  "/signup",
+  signupRateLimit,
   [
-    body("username")
-      .trim()
-      .isLength({ min: 3, max: 30 })
-      .withMessage("Username must be between 3 and 30 characters")
-      .matches(/^[a-zA-Z0-9_]+$/)
-      .withMessage(
-        "Username can only contain letters, numbers, and underscores"
-      )
-      .custom(async (value) => {
-        const isAvailable = await User.isUsernameAvailable(value);
-        if (!isAvailable) {
-          throw new Error("Username is already taken");
-        }
-        return true;
-      }),
-    body("name")
-      .trim()
-      .isLength({ min: 2, max: 50 })
-      .withMessage("Name must be between 2 and 50 characters"),
     body("email")
       .isEmail()
       .normalizeEmail()
       .withMessage("Please provide a valid email"),
     body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters"),
-    body("role")
+      .isLength({ min: 8 })
+      .withMessage("Password must be at least 8 characters")
+      .matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .withMessage("Password must contain uppercase, lowercase, and number"),
+    body("confirmPassword")
       .optional()
-      .isIn(["student", "teacher", "hr"])
-      .withMessage("Invalid role"),
+      .custom((value, { req }) => {
+        if (value && value !== req.body.password) {
+          throw new Error("Passwords do not match");
+        }
+        return true;
+      }),
   ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
@@ -287,64 +382,126 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
 
-    const { username, name, email, password, role = "student" } = req.body;
+    const { email, password } = req.body;
+    const normalizedEmail = email.toLowerCase();
 
-    // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { username: username.toLowerCase() }],
-    });
+    // Check if user already exists (verified account)
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message:
-          existingUser.email === email
-            ? "User with this email already exists"
-            : "Username is already taken",
+        message: "An account with this email already exists. Please login.",
+        data: null,
       });
     }
 
-    // Create user
-    const user = await User.create({
-      username: username.toLowerCase(),
-      name,
-      email,
-      password,
-      role,
-    });
+    // Check if there's already a pending signup for this email
+    let pendingSignup = await PendingSignup.findByEmail(normalizedEmail);
+    
+    if (pendingSignup) {
+      // Check if pending signup has expired
+      if (Date.now() > pendingSignup.expiresAt.getTime()) {
+        // Delete expired pending signup
+        await PendingSignup.deleteOne({ _id: pendingSignup._id });
+        pendingSignup = null;
+      } else {
+        // Check resend cooldown (2 minutes)
+        const cooldownMs = 2 * 60 * 1000;
+        if (pendingSignup.lastResendAt && 
+            Date.now() - pendingSignup.lastResendAt.getTime() < cooldownMs) {
+          const remainingSeconds = Math.ceil(
+            (cooldownMs - (Date.now() - pendingSignup.lastResendAt.getTime())) / 1000
+          );
+          return res.status(429).json({
+            success: false,
+            message: `Please wait ${remainingSeconds} seconds before requesting a new verification code.`,
+            data: {
+              retryAfter: remainingSeconds,
+              email: normalizedEmail,
+              requiresVerification: true,
+            },
+          });
+        }
 
-    // Generate verification token
-    const verificationToken = user.generateEmailVerificationToken();
-    await user.save();
+        // Check max resend limit (5 per day)
+        if (pendingSignup.resendCount >= 5) {
+          return res.status(429).json({
+            success: false,
+            message: "Maximum resend attempts reached. Please start a new signup.",
+            data: null,
+          });
+        }
+      }
+    }
 
-    // Send verification email
+    // Hash password
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Generate OTP and verification token
+    let plainOTP, plainToken;
+    
+    if (pendingSignup) {
+      // Update existing pending signup
+      pendingSignup.hashedPassword = hashedPassword;
+      plainOTP = pendingSignup.generateOTP(6, 10);
+      plainToken = pendingSignup.generateVerificationToken(24);
+      pendingSignup.recordResend();
+      pendingSignup.ipAddress = req.ip;
+      pendingSignup.userAgent = req.headers["user-agent"];
+      await pendingSignup.save();
+    } else {
+      // Create new pending signup
+      pendingSignup = new PendingSignup({
+        email: normalizedEmail,
+        hashedPassword,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+      plainOTP = pendingSignup.generateOTP(6, 10);
+      plainToken = pendingSignup.generateVerificationToken(24);
+      await pendingSignup.save();
+    }
+
+    // Send verification email with OTP
+    let emailSent = true;
     try {
-      await emailService.sendVerificationEmail(user.email, verificationToken);
+      await emailService.sendVerificationWithOtp(
+        normalizedEmail,
+        plainToken,
+        plainOTP,
+        { name: normalizedEmail.split("@")[0] }
+      );
     } catch (error) {
+      emailSent = false;
       logger.error("Failed to send verification email:", error);
     }
 
-    // Generate JWT token
-    const token = user.generateAuthToken();
+    // Prepare response
+    const responseData = {
+      email: normalizedEmail,
+      emailSent,
+      requiresVerification: true,
+      expiresIn: 600, // 10 minutes in seconds
+    };
+
+    // In development, include OTP and token for testing
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      responseData.otpDev = plainOTP;
+      responseData.tokenDev = plainToken;
+    }
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully",
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          emailVerified: user.emailVerified,
-          profilePicture: user.profilePicture,
-        },
-        token,
-      },
+      message: emailSent
+        ? "Signup initiated. Please check your email for the verification code."
+        : "Signup initiated but email delivery failed.",
+      data: responseData,
     });
   })
 );
@@ -376,6 +533,7 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
@@ -394,6 +552,7 @@ router.post(
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
+        data: null,
       });
     }
 
@@ -402,6 +561,7 @@ router.post(
       return res.status(401).json({
         success: false,
         message: "Account has been deactivated",
+        data: null,
       });
     }
 
@@ -411,6 +571,7 @@ router.post(
         success: false,
         message:
           "This account currently uses Google sign-in. Set a password from Settings to enable email/password login.",
+        data: null,
       });
     }
 
@@ -419,6 +580,19 @@ router.post(
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
+        data: null,
+      });
+    }
+
+    // Block login if email not verified (return verification requirement response)
+    if (!user.emailVerified) {
+      return res.status(200).json({
+        success: false,
+        message: "Email verification required",
+        data: {
+          requiresVerification: true,
+          email: user.email,
+        },
       });
     }
 
@@ -445,10 +619,12 @@ router.post(
           email: updatedUser.email,
           role: updatedUser.role,
           emailVerified: updatedUser.emailVerified,
+          isProfileComplete: updatedUser.isProfileComplete,
           profilePicture: updatedUser.profilePicture,
           profile: updatedUser.profile,
           progress: updatedUser.progress,
           metrics: updatedUser.metrics,
+          onboarding: buildOnboardingPayload(updatedUser),
         },
         token,
       },
@@ -467,26 +643,21 @@ router.get(
 // @desc    Google OAuth callback
 // @route   GET /api/auth/google/callback
 // @access  Public
-router.get(
-  "/google/callback",
-  passport.authenticate("google", { session: false }),
-  asyncHandler(async (req, res) => {
+router.get("/google/callback", (req, res, next) => {
+  passport.authenticate("google", { session: false }, async (err, user, info) => {
+    if (err || !user) {
+      logger.error("Google OAuth callback failed", {
+        error: err?.message || err,
+        info,
+      });
+      return res.redirect(`${getFrontendBaseUrl()}/auth/google/error`);
+    }
+
     try {
       console.log("=== GOOGLE OAUTH CALLBACK TRIGGERED ===");
-      console.log("Request user:", req.user);
+      console.log("Request user:", user);
       console.log("Request body:", req.body);
       console.log("Request query:", req.query);
-
-      const { user } = req;
-
-      if (!user) {
-        console.log("❌ No user found in request");
-        return res.redirect(
-          `${
-            process.env.FRONTEND_URL || "http://localhost:3000"
-          }/auth/google/error`
-        );
-      }
 
       console.log("✅ User found:", user.email);
       console.log("User profile complete:", user.isProfileComplete);
@@ -511,66 +682,54 @@ router.get(
       // Redirect based on username availability
       if (hasUsername) {
         console.log("🔄 Redirecting to dashboard (user has username)");
-        // User has username, redirect to dashboard
         res.redirect(
-          `${
-            process.env.FRONTEND_URL || "http://localhost:3000"
-          }/auth/google/success?token=${token}&profileComplete=true`
+          `${getFrontendBaseUrl()}/auth/google/success?token=${token}&profileComplete=true`
         );
-      } else {
-        console.log("🔄 Redirecting to onboarding (user needs username)");
-        // Profile incomplete, get stored Google data or create new
-        const googleDataId = crypto.randomBytes(16).toString("hex");
-
-        // Try to get stored Google data for this user
-        let googleData = null;
-        for (const [key, value] of googleDataStore.entries()) {
-          if (value.data.email === user.email) {
-            googleData = value.data;
-            googleDataStore.delete(key); // Remove old entry
-            break;
-          }
-        }
-
-        // If no stored data, create basic data
-        if (!googleData) {
-          googleData = {
-            name: user.name,
-            email: user.email,
-            picture: user.profilePicture,
-          };
-        }
-
-        console.log("Generated Google data ID:", googleDataId);
-        console.log("Google data to store:", googleData);
-
-        // Store data temporarily (expires in 10 minutes)
-        googleDataStore.set(googleDataId, {
-          data: googleData,
-          timestamp: Date.now(),
-          expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-        });
-
-        console.log("✅ Google data stored successfully");
-        console.log("Current store size:", googleDataStore.size);
-
-        const redirectUrl = `${
-          process.env.FRONTEND_URL || "http://localhost:3000"
-        }/auth/google/success?token=${token}&profileComplete=false&googleDataId=${googleDataId}`;
-
-        console.log("Redirecting to:", redirectUrl);
-        res.redirect(redirectUrl);
+        return;
       }
+
+      console.log("🔄 Redirecting to onboarding (user needs username)");
+      const googleDataId = crypto.randomBytes(16).toString("hex");
+
+      let googleData = null;
+      for (const [key, value] of googleDataStore.entries()) {
+        if (value.data.email === user.email) {
+          googleData = value.data;
+          googleDataStore.delete(key);
+          break;
+        }
+      }
+
+      if (!googleData) {
+        googleData = {
+          name: user.name,
+          email: user.email,
+          picture: user.profilePicture,
+        };
+      }
+
+      console.log("Generated Google data ID:", googleDataId);
+      console.log("Google data to store:", googleData);
+
+      googleDataStore.set(googleDataId, {
+        data: googleData,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + 10 * 60 * 1000,
+      });
+
+      console.log("✅ Google data stored successfully");
+      console.log("Current store size:", googleDataStore.size);
+
+      const redirectUrl = `${getFrontendBaseUrl()}/auth/google/success?token=${token}&profileComplete=false&googleDataId=${googleDataId}`;
+
+      console.log("Redirecting to:", redirectUrl);
+      res.redirect(redirectUrl);
     } catch (error) {
       console.error("❌ Google OAuth callback error:", error);
-      res.redirect(
-        `${
-          process.env.FRONTEND_URL || "http://localhost:3000"
-        }/auth/google/error`
-      );
+      res.redirect(`${getFrontendBaseUrl()}/auth/google/error`);
     }
-  })
-);
+  })(req, res, next);
+});
 
 // @desc    Admin Google OAuth login
 // @route   GET /api/auth/admin/google
@@ -593,6 +752,7 @@ router.get(
       return res.status(401).json({
         success: false,
         message: "Admin Google authentication failed",
+        data: null,
       });
     }
 
@@ -603,46 +763,444 @@ router.get(
     const token = updatedUser.generateAuthToken();
 
     // Redirect to admin frontend with token
-    const redirectUrl = `${
-      process.env.FRONTEND_URL || "http://localhost:3000"
-    }/admin/auth/callback?token=${token}`;
+    const redirectUrl = `${getFrontendBaseUrl()}/admin/auth/callback?token=${token}`;
     res.redirect(redirectUrl);
   })
 );
 
-// @desc    Verify email
+const verifyEmailTokenHandler = async (req, res) => {
+  const token = req.params.token || req.query.token;
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Verification token is required", data: null });
+  }
+
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const user = await User.findOne({
+    emailVerificationToken: hashedToken,
+    emailVerificationExpires: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    return res.status(400).json({ success: false, message: "Invalid or expired verification token", data: null });
+  }
+
+  user.emailVerified = true;
+  user.emailVerificationToken = undefined;
+  user.emailVerificationExpires = undefined;
+  user.emailVerificationOtp = undefined;
+  user.emailVerificationOtpExpires = undefined;
+  await user.save();
+
+  return res.json({ success: true, message: "Email verified successfully", data: { emailVerified: true } });
+};
+
+// @desc    Verify email via token (legacy path)
 // @route   GET /api/auth/verify-email/:token
 // @access  Public
-router.get(
-  "/verify-email/:token",
-  asyncHandler(async (req, res) => {
-    const { token } = req.params;
+router.get("/verify-email/:token", asyncHandler(verifyEmailTokenHandler));
 
-    // Hash the token
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+// @desc    Verify email via token (query)
+// @route   GET /api/auth/verify-email-token?token=...
+// @access  Public
+router.get("/verify-email-token", asyncHandler(verifyEmailTokenHandler));
 
-    // Find user with this token
-    const user = await User.findOne({
-      emailVerificationToken: hashedToken,
-      emailVerificationExpires: { $gt: Date.now() },
+const sendVerificationOtpHandler = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    console.log("=== RESEND OTP VALIDATION ERRORS ===", errors.array());
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      data: null,
+      errors: errors.array(),
     });
+  }
 
-    if (!user) {
+  const email = String(req.body.email).toLowerCase();
+  console.log("=== RESEND OTP REQUEST ===");
+  console.log("Email:", email);
+
+  // FIRST: Check for pending signup (new flow)
+  const pendingSignup = await PendingSignup.findByEmail(email);
+  console.log("Pending signup found:", !!pendingSignup);
+  if (pendingSignup) {
+    console.log("Pending signup expiresAt:", pendingSignup.expiresAt);
+    console.log("Pending signup isVerified:", pendingSignup.isVerified);
+    // Check if already verified
+    if (pendingSignup.isVerified) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired verification token",
+        message: "This email has already been verified. Please complete your profile.",
+        data: { alreadyVerified: true },
       });
     }
 
-    // Mark email as verified
-    user.emailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save();
+    // Check if expired
+    if (Date.now() > pendingSignup.expiresAt.getTime()) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return res.status(400).json({
+        success: false,
+        message: "Verification session has expired. Please start the signup process again.",
+        data: { expired: true },
+      });
+    }
 
-    res.json({
+    // Check cooldown (2 minutes)
+    const cooldownMs = 2 * 60 * 1000;
+    if (pendingSignup.lastResendAt && 
+        Date.now() - pendingSignup.lastResendAt.getTime() < cooldownMs) {
+      const remainingSeconds = Math.ceil(
+        (cooldownMs - (Date.now() - pendingSignup.lastResendAt.getTime())) / 1000
+      );
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${remainingSeconds} seconds before requesting a new code.`,
+        data: { retryAfter: remainingSeconds },
+      });
+    }
+
+    // Check max resends
+    if (pendingSignup.resendCount >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: "Maximum resend attempts reached. Please start a new signup.",
+        data: null,
+      });
+    }
+
+    // Generate new OTP and token (invalidate old ones)
+    const plainOTP = pendingSignup.generateOTP(6, 10);
+    const plainToken = pendingSignup.generateVerificationToken(24);
+    pendingSignup.recordResend();
+    await pendingSignup.save();
+
+    // Send new verification email
+    let emailSent = true;
+    try {
+      await emailService.sendVerificationWithOtp(
+        email,
+        plainToken,
+        plainOTP,
+        { name: email.split("@")[0] }
+      );
+    } catch (error) {
+      emailSent = false;
+      logger.error("Failed to resend verification email:", error);
+    }
+
+    const responseData = {
+      emailSent,
+      expiresIn: 600,
+    };
+
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      responseData.otpDev = plainOTP;
+      responseData.tokenDev = plainToken;
+    }
+
+    return res.json({
       success: true,
-      message: "Email verified successfully",
+      message: emailSent
+        ? "New verification code sent. Check your email."
+        : "Failed to send verification email.",
+      data: responseData,
+    });
+  }
+
+  // SECOND: Check for legacy user (old flow)
+  const user = await User.findOne({ email });
+  if (!user) {
+    return res.json({
+      success: true,
+      message: "If an account exists for this email, a verification link and code have been sent.",
+      data: { emailSent: true },
+    });
+  }
+
+  if (user.emailVerified) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is already verified",
+      data: null,
+    });
+  }
+
+  const now = Date.now();
+  const entry = emailResendTracker.get(email) || {
+    count: 0,
+    firstRequestAt: now,
+    lastSentAt: 0,
+  };
+
+  if (now - entry.firstRequestAt > RESEND_WINDOW_MS) {
+    entry.count = 0;
+    entry.firstRequestAt = now;
+    entry.lastSentAt = 0;
+  }
+
+  if (now - entry.lastSentAt < MIN_RESEND_INTERVAL_MS) {
+    return res.status(429).json({
+      success: false,
+      message: `Please wait ${Math.ceil((MIN_RESEND_INTERVAL_MS - (now - entry.lastSentAt)) / 1000)} seconds before requesting another verification email.`,
+      data: null,
+    });
+  }
+
+  if (entry.count >= MAX_RESENDS_PER_WINDOW) {
+    return res.status(429).json({
+      success: false,
+      message: "You have reached the maximum number of resend attempts for today. Please try again later or contact support.",
+      data: null,
+    });
+  }
+
+  const verificationToken = user.generateEmailVerificationToken();
+  const otp = user.generateEmailVerificationOtp();
+  await user.save();
+
+  let emailSent = true;
+  try {
+    await emailService.sendVerificationWithOtp(user.email, verificationToken, otp, { name: user.name });
+  } catch (error) {
+    emailSent = false;
+    logger.error("Failed to send verification email (with OTP):", error);
+  }
+
+  if (emailSent) {
+    entry.count += 1;
+    entry.lastSentAt = now;
+    emailResendTracker.set(email, entry);
+  }
+
+  const responseData = { emailSent };
+  if (!emailSent && process.env.NODE_ENV !== "production") {
+    responseData.verificationToken = verificationToken;
+    responseData.otp = otp;
+    responseData.verificationUrl = `${getFrontendBaseUrl()}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+  }
+
+  return res.json({
+    success: true,
+    message: emailSent
+      ? "Verification link and code sent. Check your inbox."
+      : "Failed to send verification email.",
+    data: responseData,
+  });
+};
+
+// @desc    Send verification OTP + link
+// @route   POST /api/auth/send-verification-otp
+// @access  Public
+router.post(
+  "/send-verification-otp",
+  resendIpLimiter,
+  [body("email").isEmail().normalizeEmail().withMessage("Please provide a valid email")],
+  asyncHandler(sendVerificationOtpHandler)
+);
+
+// @desc    Resend OTP + link
+// @route   POST /api/auth/resend-otp
+// @access  Public
+router.post(
+  "/resend-otp",
+  verifyOtpRateLimit,
+  [body("email").isEmail().normalizeEmail().withMessage("Please provide a valid email")],
+  asyncHandler(sendVerificationOtpHandler)
+);
+
+// @desc    Verify OTP (supports both new pending signup flow and legacy users)
+// @route   POST /api/auth/verify-otp
+// @access  Public
+router.post(
+  "/verify-otp",
+  verifyOtpRateLimit,
+  [
+    body("email").isEmail().normalizeEmail().withMessage("Please provide a valid email"),
+    body("otp").isLength({ min: 4, max: 10 }).trim().withMessage("Please enter a valid verification code"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      console.log("=== VERIFY OTP VALIDATION ERRORS ===", errors.array());
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        data: null,
+        errors: errors.array(),
+      });
+    }
+
+    const email = String(req.body.email).toLowerCase();
+    const otp = String(req.body.otp).trim();
+    
+    console.log("=== VERIFY OTP REQUEST ===");
+    console.log("Email:", email);
+    console.log("OTP:", otp);
+    console.log("Body:", req.body);
+
+    // FIRST: Check for pending signup (new flow)
+    const pendingSignup = await PendingSignup.findByEmail(email);
+    console.log("Pending signup found:", !!pendingSignup);
+    if (pendingSignup) {
+      console.log("  expiresAt:", pendingSignup.expiresAt);
+      console.log("  isVerified:", pendingSignup.isVerified);
+      console.log("  hashedOTP:", pendingSignup.hashedOTP ? "exists" : "missing");
+      console.log("  otpExpiresAt:", pendingSignup.otpExpiresAt);
+      console.log("  Now:", new Date());
+      console.log("  Expired?:", Date.now() > pendingSignup.expiresAt.getTime());
+      // Check if already verified
+      if (pendingSignup.isVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "This email has already been verified. Please complete your profile.",
+          data: { alreadyVerified: true, requiresProfileCompletion: true },
+        });
+      }
+
+      // Check if expired
+      if (Date.now() > pendingSignup.expiresAt.getTime()) {
+        await PendingSignup.deleteOne({ _id: pendingSignup._id });
+        return res.status(400).json({
+          success: false,
+          message: "Verification code has expired. Please start the signup process again.",
+          data: { expired: true },
+        });
+      }
+
+      // Track verification attempt
+      pendingSignup.recordVerificationAttempt();
+      await pendingSignup.save();
+
+      // Max attempts
+      if (pendingSignup.verificationAttempts > 5) {
+        return res.status(429).json({
+          success: false,
+          message: "Too many failed attempts. Please request a new verification code.",
+          data: null,
+        });
+      }
+
+      // Verify OTP
+      const otpResult = pendingSignup.verifyOTP(otp);
+      console.log("OTP verification result:", otpResult);
+      if (!otpResult.valid) {
+        console.log("OTP verification failed:", otpResult.reason);
+        return res.status(400).json({
+          success: false,
+          message: otpResult.reason === "expired"
+            ? "Verification code has expired. Please request a new one."
+            : "Invalid verification code. Please try again.",
+          data: null,
+        });
+      }
+      console.log("OTP verified successfully!");
+
+      // Mark as verified
+      pendingSignup.markVerified();
+      await pendingSignup.save();
+
+      // Create the actual user account
+      // Use _skipPasswordHashing flag to prevent pre-save middleware from re-hashing
+      const newUser = new User({
+        email: pendingSignup.email,
+        password: pendingSignup.hashedPassword,
+        emailVerified: true,
+        isProfileComplete: false,
+        onboarding: {
+          status: "profile",
+          step: "profile",
+          source: "email",
+          updatedAt: new Date(),
+        },
+      });
+      newUser._skipPasswordHashing = true;
+      await newUser.save();
+
+      // Generate auth token
+      const authToken = newUser.generateAuthToken();
+
+      // Send welcome email
+      try {
+        await emailService.sendWelcomeEmail(newUser.email, email.split("@")[0]);
+      } catch (error) {
+        logger.error("Failed to send welcome email:", error);
+      }
+
+      return res.json({
+        success: true,
+        message: "Email verified successfully! Your account has been created.",
+        data: {
+          email: newUser.email,
+          emailVerified: true,
+          isProfileComplete: false,
+          token: authToken,
+          requiresProfileCompletion: true,
+          onboarding: buildOnboardingPayload(newUser),
+        },
+      });
+    }
+
+    // SECOND: Check for legacy user (old flow - for backward compatibility)
+    const user = await User.findOne({ email });
+    if (user) {
+      if (user.emailVerified) {
+        return res.json({
+          success: true,
+          message: "Email is already verified",
+          data: { emailVerified: true },
+        });
+      }
+
+      if (!user.emailVerificationOtp || !user.emailVerificationOtpExpires) {
+        return res.status(400).json({
+          success: false,
+          message: "No verification code found. Request a new code.",
+          data: null,
+        });
+      }
+
+      if (Date.now() > user.emailVerificationOtpExpires) {
+        return res.status(400).json({
+          success: false,
+          message: "Verification code expired. Please request a new one.",
+          data: null,
+        });
+      }
+
+      const hashed = crypto.createHash("sha256").update(otp).digest("hex");
+      if (hashed !== user.emailVerificationOtp) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid verification code.",
+          data: null,
+        });
+      }
+
+      // Mark verified
+      user.emailVerified = true;
+      user.emailVerificationToken = undefined;
+      user.emailVerificationExpires = undefined;
+      user.emailVerificationOtp = undefined;
+      user.emailVerificationOtpExpires = undefined;
+      await user.save();
+
+      return res.json({
+        success: true,
+        message: "Email verified successfully",
+        data: {
+          emailVerified: true,
+          email: user.email,
+          requiresProfileCompletion: !user.isProfileComplete,
+        },
+      });
+    }
+
+    // No pending signup or user found
+    console.log("No pending signup or user found for email:", email);
+    return res.status(400).json({
+      success: false,
+      message: "Invalid verification code or email. Please start the signup process again.",
+      data: null,
     });
   })
 );
@@ -659,6 +1217,7 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
@@ -695,6 +1254,7 @@ router.post(
         return res.status(500).json({
           success: false,
           message: "Failed to send password reset email",
+          data: null,
         });
       }
     }
@@ -702,7 +1262,7 @@ router.post(
     const responseData = { emailSent };
     if (!emailSent && process.env.NODE_ENV !== "production") {
       responseData.resetToken = resetToken;
-      responseData.resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+      responseData.resetUrl = `${getFrontendBaseUrl()}/reset-password/${resetToken}`;
     }
 
     res.json({
@@ -710,6 +1270,89 @@ router.post(
       message:
         "If an account exists for this email, a password reset link has been sent.",
       data: responseData,
+    });
+  })
+);
+
+// @desc    Admin: resend verification for a specific user
+// @route   POST /api/auth/admin/resend-verification/:userId
+// @access  Private (admin)
+router.post(
+  "/admin/resend-verification/:userId",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ success: false, message: "Access denied. Admin only.", data: null });
+    }
+
+    const { userId } = req.params;
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found", data: null });
+    }
+
+    if (user.emailVerified) {
+      return res.json({ success: true, message: "User email already verified", data: { emailVerified: true } });
+    }
+
+    const verificationToken = user.generateEmailVerificationToken();
+    await user.save();
+
+    let emailSent = true;
+    try {
+      await emailService.sendResendVerificationEmail(user.email, verificationToken, { name: user.name });
+    } catch (error) {
+      emailSent = false;
+      logger.error("Admin resend verification failed:", error);
+    }
+
+    res.json({
+      success: true,
+      message: emailSent ? "Verification email sent" : "Failed to send verification email",
+      data: { emailSent },
+    });
+  })
+);
+
+// @desc    Smoke test: send a test email (dev or admin only)
+// @route   POST /api/auth/smoke-email
+// @access  Public (but restricted to dev/admin)
+router.post(
+  "/smoke-email",
+  [body("to").optional().isEmail().normalizeEmail()],
+  asyncHandler(async (req, res) => {
+    const to = (req.body.to || process.env.SMOKE_EMAIL_TO || "prince844121@gmail.com").toLowerCase();
+
+    // Allow in development or to admins only
+    if (process.env.NODE_ENV === "production") {
+      // Require admin auth in production
+      if (!req.headers.authorization) {
+        return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+      }
+      // Authenticate token header
+      try {
+        await authenticateToken(req, res, async () => {});
+      } catch (err) {
+        return res.status(401).json({ success: false, message: "Unauthorized", data: null });
+      }
+      if (!req.user || req.user.role !== "admin") {
+        return res.status(403).json({ success: false, message: "Admin only", data: null });
+      }
+    }
+
+    let sent = true;
+    try {
+      // Use welcome email as a simple smoke test
+      await emailService.sendWelcomeEmail(to, "iPrepmate Smoke Test");
+    } catch (error) {
+      sent = false;
+      logger.error("Smoke email failed:", error);
+    }
+
+    res.json({
+      success: sent,
+      message: sent ? "Smoke email sent" : "Smoke email failed",
+      data: { emailSent: sent },
     });
   })
 );
@@ -730,6 +1373,7 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
@@ -750,6 +1394,7 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "Invalid or expired reset token",
+        data: null,
       });
     }
 
@@ -762,6 +1407,7 @@ router.post(
     res.json({
       success: true,
       message: "Password reset successfully",
+      data: null,
     });
   })
 );
@@ -778,10 +1424,15 @@ router.get(
       .populate("followers", "name username profilePicture")
       .populate("following", "name username profilePicture");
 
+    const payloadUser = user?.toObject ? user.toObject() : user;
+    if (payloadUser) {
+      payloadUser.onboarding = buildOnboardingPayload(user);
+    }
+
     res.json({
       success: true,
       data: {
-        user,
+        user: payloadUser,
       },
     });
   })
@@ -822,6 +1473,7 @@ router.put(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
@@ -870,6 +1522,7 @@ router.put(
       return res.status(404).json({
         success: false,
         message: "User not found",
+        data: null,
       });
     }
 
@@ -933,6 +1586,7 @@ router.put(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
@@ -944,6 +1598,7 @@ router.put(
       return res.status(404).json({
         success: false,
         message: "User not found",
+        data: null,
       });
     }
 
@@ -954,6 +1609,7 @@ router.put(
         return res.status(400).json({
           success: false,
           message: "Current password is required",
+          data: null,
         });
       }
 
@@ -963,6 +1619,7 @@ router.put(
         return res.status(400).json({
           success: false,
           message: "Current password is incorrect",
+          data: null,
         });
       }
     }
@@ -976,6 +1633,7 @@ router.put(
       message: hasPassword
         ? "Password changed successfully"
         : "Password set successfully",
+      data: null,
     });
   })
 );
@@ -999,6 +1657,7 @@ router.put(
       return res.status(400).json({
         success: false,
         message: "Validation failed",
+        data: null,
         errors: errors.array(),
       });
     }
@@ -1011,6 +1670,7 @@ router.put(
       return res.status(404).json({
         success: false,
         message: "User not found",
+        data: null,
       });
     }
 
@@ -1018,6 +1678,7 @@ router.put(
       return res.status(400).json({
         success: false,
         message: "New email must be different from current email",
+        data: null,
       });
     }
 
@@ -1029,6 +1690,7 @@ router.put(
       return res.status(400).json({
         success: false,
         message: "Email is already in use",
+        data: null,
       });
     }
 
@@ -1037,6 +1699,7 @@ router.put(
         return res.status(400).json({
           success: false,
           message: "Current password is required",
+          data: null,
         });
       }
 
@@ -1045,6 +1708,7 @@ router.put(
         return res.status(400).json({
           success: false,
           message: "Current password is incorrect",
+          data: null,
         });
       }
     }
@@ -1106,6 +1770,7 @@ router.post(
       return res.status(404).json({
         success: false,
         message: "User not found",
+        data: null,
       });
     }
 
@@ -1113,6 +1778,7 @@ router.post(
       return res.status(400).json({
         success: false,
         message: "Google account is not linked",
+        data: null,
       });
     }
 
@@ -1122,6 +1788,7 @@ router.post(
           success: false,
           message:
             "Set a password (at least 6 characters) before unlinking Google to keep access to your account",
+          data: null,
         });
       }
       user.password = String(newPassword);
@@ -1210,6 +1877,7 @@ router.post(
     res.json({
       success: true,
       message: "Logged out successfully",
+      data: null,
     });
   })
 );
@@ -1226,6 +1894,7 @@ router.get(
       return res.status(400).json({
         success: false,
         message: "Username is required",
+        data: null,
       });
     }
 
@@ -1236,10 +1905,10 @@ router.get(
 
     res.json({
       success: true,
-      available: !existingUser,
       message: existingUser
         ? "Username is already taken"
         : "Username is available",
+      data: { available: !existingUser },
     });
   })
 );
@@ -1259,6 +1928,7 @@ const updateUsernameHandler = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Validation failed",
+      data: null,
       errors: errors.array(),
     });
   }
@@ -1276,6 +1946,7 @@ const updateUsernameHandler = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Username is already taken",
+      data: null,
     });
   }
 
@@ -1290,6 +1961,7 @@ const updateUsernameHandler = asyncHandler(async (req, res) => {
     return res.status(404).json({
       success: false,
       message: "User not found",
+      data: null,
     });
   }
 
@@ -1341,6 +2013,16 @@ router.post(
       .trim()
       .isLength({ min: 1, max: 100 })
       .withMessage("Name must be between 1 and 100 characters"),
+    body("firstName")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("First name must be less than 50 characters"),
+    body("lastName")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Last name must be less than 50 characters"),
     body("role")
       .trim()
       .isIn(["student", "teacher", "hr"])
@@ -1406,6 +2088,8 @@ router.post(
     const {
       username,
       name,
+      firstName,
+      lastName,
       role,
       dateOfBirth,
       gender,
@@ -1428,14 +2112,18 @@ router.post(
     }
 
     // Update user profile
+    const resolvedName = name || `${firstName || ""} ${lastName || ""}`.trim();
+
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
       {
         username: username.toLowerCase(),
-        name,
+        name: resolvedName || name,
         role,
         profilePicture,
         profile: {
+          firstName,
+          lastName,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
           gender,
           mobileNumber,
@@ -1444,6 +2132,12 @@ router.post(
           bio,
         },
         isProfileComplete: true,
+        onboarding: {
+          status: "complete",
+          step: "complete",
+          source: "google",
+          updatedAt: new Date(),
+        },
       },
       { new: true, runValidators: true }
     );
@@ -1474,6 +2168,7 @@ router.post(
           profilePicture: updatedUser.profilePicture,
           role: updatedUser.role,
           isProfileComplete: updatedUser.isProfileComplete,
+          onboarding: buildOnboardingPayload(updatedUser),
         },
         token,
       },
@@ -1653,15 +2348,1394 @@ router.get(
   })
 );
 
-// @desc    Get blacklist statistics (for debugging)
+// ============================================================
+// SECURE MULTI-STEP SIGNUP & VERIFICATION FLOW
+// ============================================================
+// Flow:
+// 1. POST /api/auth/start-signup - User enters email + password, creates pending signup
+// 2. POST /api/auth/verify-signup-otp - Verify OTP, create real user account
+// 3. POST /api/auth/resend-signup-otp - Resend OTP
+// 4. GET /api/auth/verify-email-token - Verify via email link, create real user account
+// 5. POST /api/auth/complete-profile - Complete profile with username after verification
+
+// @desc    Start signup process - Create pending signup (NO user created yet)
+// @route   POST /api/auth/start-signup
+// @access  Public
+router.post(
+  "/start-signup",
+  signupRateLimit,
+  [
+    body("email")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid email"),
+    body("password")
+      .isLength({ min: 8 })
+      .withMessage("Password must be at least 8 characters")
+      .matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .withMessage("Password must contain uppercase, lowercase, and number"),
+    body("confirmPassword")
+      .custom((value, { req }) => {
+        if (value !== req.body.password) {
+          throw new Error("Passwords do not match");
+        }
+        return true;
+      }),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        data: null,
+        errors: errors.array(),
+      });
+    }
+
+    const { email, password } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    // Check if user already exists (verified account)
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "An account with this email already exists. Please login.",
+        data: null,
+      });
+    }
+
+    // Check if there's already a pending signup for this email
+    let pendingSignup = await PendingSignup.findByEmail(normalizedEmail);
+    
+    if (pendingSignup) {
+      // Check if pending signup has expired
+      if (Date.now() > pendingSignup.expiresAt.getTime()) {
+        // Delete expired pending signup
+        await PendingSignup.deleteOne({ _id: pendingSignup._id });
+        pendingSignup = null;
+      } else {
+        // Check resend cooldown (2 minutes)
+        const cooldownMs = 2 * 60 * 1000;
+        if (pendingSignup.lastResendAt && 
+            Date.now() - pendingSignup.lastResendAt.getTime() < cooldownMs) {
+          const remainingSeconds = Math.ceil(
+            (cooldownMs - (Date.now() - pendingSignup.lastResendAt.getTime())) / 1000
+          );
+          return res.status(429).json({
+            success: false,
+            message: `Please wait ${remainingSeconds} seconds before requesting a new verification code.`,
+            data: {
+              retryAfter: remainingSeconds,
+              email: normalizedEmail,
+            },
+          });
+        }
+
+        // Check max resend limit (5 per day)
+        if (pendingSignup.resendCount >= 5) {
+          return res.status(429).json({
+            success: false,
+            message: "Maximum resend attempts reached. Please start a new signup.",
+            data: null,
+          });
+        }
+      }
+    }
+
+    // Hash password
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Generate OTP and verification token
+    let plainOTP, plainToken;
+    
+    if (pendingSignup) {
+      // Update existing pending signup
+      pendingSignup.hashedPassword = hashedPassword;
+      pendingSignup.resendCount += 1;
+      plainOTP = pendingSignup.generateOTP(6, 10);
+      plainToken = pendingSignup.generateVerificationToken(24);
+      pendingSignup.recordResend();
+      pendingSignup.ipAddress = req.ip;
+      pendingSignup.userAgent = req.headers["user-agent"];
+      await pendingSignup.save();
+    } else {
+      // Create new pending signup
+      pendingSignup = new PendingSignup({
+        email: normalizedEmail,
+        hashedPassword,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+      plainOTP = pendingSignup.generateOTP(6, 10);
+      plainToken = pendingSignup.generateVerificationToken(24);
+      await pendingSignup.save();
+    }
+
+    // Send verification email with OTP
+    let emailSent = true;
+    try {
+      await emailService.sendVerificationWithOtp(
+        normalizedEmail,
+        plainToken,
+        plainOTP,
+        { name: normalizedEmail.split("@")[0] }
+      );
+    } catch (error) {
+      emailSent = false;
+      logger.error("Failed to send verification email:", error);
+    }
+
+    // Prepare response
+    const responseData = {
+      email: normalizedEmail,
+      emailSent,
+      expiresIn: 600, // 10 minutes in seconds
+      message: emailSent
+        ? "Verification code sent to your email."
+        : "Failed to send verification email. Please try again.",
+    };
+
+    // In development, include OTP and token for testing
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      responseData.otpDev = plainOTP;
+      responseData.tokenDev = plainToken;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: emailSent
+        ? "Signup initiated. Please check your email for the verification code."
+        : "Signup initiated but email delivery failed.",
+      data: responseData,
+    });
+  })
+);
+
+// @desc    Verify signup OTP - Creates real user account after verification
+// @route   POST /api/auth/verify-signup-otp
+// @access  Public
+router.post(
+  "/verify-signup-otp",
+  verifyOtpRateLimit,
+  [
+    body("email")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid email"),
+    body("otp")
+      .isLength({ min: 6, max: 6 })
+      .isNumeric()
+      .withMessage("Please enter a valid 6-digit verification code"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        data: null,
+        errors: errors.array(),
+      });
+    }
+
+    const { email, otp } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    // Find pending signup
+    const pendingSignup = await PendingSignup.findByEmail(normalizedEmail);
+    if (!pendingSignup) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending signup found. Please start the signup process again.",
+        data: null,
+      });
+    }
+
+    // Check if already verified
+    if (pendingSignup.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "This email has already been verified. Please complete your profile.",
+        data: { alreadyVerified: true },
+      });
+    }
+
+    // Check if expired
+    if (Date.now() > pendingSignup.expiresAt.getTime()) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return res.status(400).json({
+        success: false,
+        message: "Verification code has expired. Please start the signup process again.",
+        data: { expired: true },
+      });
+    }
+
+    // Track verification attempt
+    pendingSignup.recordVerificationAttempt();
+    await pendingSignup.save();
+
+    // Max verification attempts
+    if (pendingSignup.verificationAttempts > 5) {
+      return res.status(429).json({
+        success: false,
+        message: "Too many failed attempts. Please request a new verification code.",
+        data: null,
+      });
+    }
+
+    // Verify OTP
+    const otpResult = pendingSignup.verifyOTP(otp);
+    if (!otpResult.valid) {
+      return res.status(400).json({
+        success: false,
+        message: otpResult.reason === "expired"
+          ? "Verification code has expired. Please request a new one."
+          : "Invalid verification code. Please try again.",
+        data: null,
+      });
+    }
+
+    // Mark pending signup as verified
+    pendingSignup.markVerified();
+    await pendingSignup.save();
+
+    // Create the actual user account (only after verification!)
+    // Use _skipPasswordHashing flag to prevent pre-save middleware from re-hashing
+    const user = new User({
+      email: pendingSignup.email,
+      password: pendingSignup.hashedPassword, // Already hashed
+      emailVerified: true,
+      isProfileComplete: false,
+      onboarding: {
+        status: "profile",
+        step: "profile",
+        source: "email",
+        updatedAt: new Date(),
+      },
+    });
+    user._skipPasswordHashing = true;
+    await user.save();
+
+    // Generate auth token
+    const authToken = user.generateAuthToken();
+
+    // Send welcome email
+    try {
+      await emailService.sendWelcomeEmail(user.email, normalizedEmail.split("@")[0]);
+    } catch (error) {
+      logger.error("Failed to send welcome email:", error);
+    }
+
+    res.json({
+      success: true,
+      message: "Email verified successfully! Your account has been created.",
+      data: {
+        email: user.email,
+        emailVerified: true,
+        isProfileComplete: false,
+        token: authToken,
+        requiresProfileCompletion: true,
+        onboarding: buildOnboardingPayload(user),
+      },
+    });
+  })
+);
+
+// @desc    Resend signup OTP
+// @route   POST /api/auth/resend-signup-otp
+// @access  Public
+router.post(
+  "/resend-signup-otp",
+  resendIpLimiter,
+  [
+    body("email")
+      .isEmail()
+      .normalizeEmail()
+      .withMessage("Please provide a valid email"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        data: null,
+        errors: errors.array(),
+      });
+    }
+
+    const { email } = req.body;
+    const normalizedEmail = email.toLowerCase();
+
+    // Find pending signup
+    const pendingSignup = await PendingSignup.findByEmail(normalizedEmail);
+    if (!pendingSignup) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending signup found. Please start the signup process again.",
+        data: null,
+      });
+    }
+
+    // Check if already verified
+    if (pendingSignup.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "This email has already been verified.",
+        data: null,
+      });
+    }
+
+    // Check if expired
+    if (Date.now() > pendingSignup.expiresAt.getTime()) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return res.status(400).json({
+        success: false,
+        message: "Verification session has expired. Please start the signup process again.",
+        data: { expired: true },
+      });
+    }
+
+    // Check cooldown (2 minutes)
+    const cooldownMs = 2 * 60 * 1000;
+    if (pendingSignup.lastResendAt && 
+        Date.now() - pendingSignup.lastResendAt.getTime() < cooldownMs) {
+      const remainingSeconds = Math.ceil(
+        (cooldownMs - (Date.now() - pendingSignup.lastResendAt.getTime())) / 1000
+      );
+      return res.status(429).json({
+        success: false,
+        message: `Please wait ${remainingSeconds} seconds before requesting a new code.`,
+        data: { retryAfter: remainingSeconds },
+      });
+    }
+
+    // Check max resends
+    if (pendingSignup.resendCount >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: "Maximum resend attempts reached. Please start a new signup.",
+        data: null,
+      });
+    }
+
+    // Generate new OTP and token (invalidate old ones)
+    const plainOTP = pendingSignup.generateOTP(6, 10);
+    const plainToken = pendingSignup.generateVerificationToken(24);
+    pendingSignup.recordResend();
+    await pendingSignup.save();
+
+    // Send new verification email
+    let emailSent = true;
+    try {
+      await emailService.sendVerificationWithOtp(
+        normalizedEmail,
+        plainToken,
+        plainOTP,
+        { name: normalizedEmail.split("@")[0] }
+      );
+    } catch (error) {
+      emailSent = false;
+      logger.error("Failed to resend verification email:", error);
+    }
+
+    const responseData = {
+      emailSent,
+      expiresIn: 600,
+    };
+
+    if (!emailSent && process.env.NODE_ENV !== "production") {
+      responseData.otpDev = plainOTP;
+      responseData.tokenDev = plainToken;
+    }
+
+    res.json({
+      success: true,
+      message: emailSent
+        ? "New verification code sent. Check your email."
+        : "Failed to send verification email.",
+      data: responseData,
+    });
+  })
+);
+
+// @desc    Verify email via token (from email link) - Creates user account
+// @route   GET /api/auth/verify-email-token
+// @access  Public
+router.get(
+  "/verify-email-token",
+  asyncHandler(async (req, res) => {
+    const { token } = req.query;
+    
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: "Verification token is required",
+        data: null,
+      });
+    }
+
+    // Find pending signup by token
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const pendingSignup = await PendingSignup.findOne({
+      verificationToken: hashedToken,
+      isVerified: false,
+    });
+
+    if (!pendingSignup) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification link. Please start the signup process again.",
+        data: null,
+      });
+    }
+
+    // Check if expired
+    if (Date.now() > pendingSignup.expiresAt.getTime()) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return res.status(400).json({
+        success: false,
+        message: "Verification link has expired. Please start the signup process again.",
+        data: { expired: true },
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: pendingSignup.email });
+    if (existingUser) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return res.status(400).json({
+        success: false,
+        message: "An account with this email already exists. Please login.",
+        data: null,
+      });
+    }
+
+    // Mark as verified
+    pendingSignup.markVerified();
+    await pendingSignup.save();
+
+    // Create the actual user account
+    const user = new User({
+      email: pendingSignup.email,
+      password: pendingSignup.hashedPassword,
+      emailVerified: true,
+      isProfileComplete: false,
+      onboarding: {
+        status: "profile",
+        step: "profile",
+        source: "email",
+        updatedAt: new Date(),
+      },
+    });
+    user._skipPasswordHashing = true;
+    await user.save();
+
+    // Generate auth token
+    const authToken = user.generateAuthToken();
+
+    // Send welcome email
+    try {
+      await emailService.sendWelcomeEmail(user.email, pendingSignup.email.split("@")[0]);
+    } catch (error) {
+      logger.error("Failed to send welcome email:", error);
+    }
+
+    res.json({
+      success: true,
+      message: "Email verified successfully! Your account has been created.",
+      data: {
+        email: user.email,
+        emailVerified: true,
+        isProfileComplete: false,
+        token: authToken,
+        requiresProfileCompletion: true,
+        onboarding: buildOnboardingPayload(user),
+      },
+    });
+  })
+);
+
+// @desc    Complete profile after verification (set username, name, etc.)
+// @route   POST /api/auth/complete-profile
+// @access  Private (requires valid auth token)
+router.post(
+  "/complete-profile",
+  authenticateToken,
+  [
+    body("username")
+      .trim()
+      .isLength({ min: 3, max: 30 })
+      .withMessage("Username must be between 3 and 30 characters")
+      .matches(/^[a-zA-Z0-9_]+$/)
+      .withMessage("Username can only contain letters, numbers, and underscores"),
+    body("name")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Name must be less than 50 characters"),
+    body("firstName")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("First name must be less than 50 characters"),
+    body("lastName")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Last name must be less than 50 characters"),
+    body("role")
+      .optional()
+      .isIn(["student", "teacher", "hr"])
+      .withMessage("Invalid role"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        data: null,
+        errors: errors.array(),
+      });
+    }
+
+    const userId = req.user.id;
+    const {
+      username,
+      name,
+      firstName,
+      lastName,
+      role,
+      profilePicture,
+      dateOfBirth,
+      bio,
+    } = req.body;
+
+    // Get user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+        data: null,
+      });
+    }
+
+    // Check if already profile complete
+    if (user.isProfileComplete && user.username) {
+      return res.status(400).json({
+        success: false,
+        message: "Profile is already complete",
+        data: null,
+      });
+    }
+
+    // Check username availability
+    const existingUser = await User.findOne({
+      username: username.toLowerCase(),
+      _id: { $ne: userId },
+    });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is already taken. Please choose another.",
+        data: null,
+      });
+    }
+
+    // Update user profile
+    const resolvedFirstName = firstName || user.profile?.firstName || "";
+    const resolvedLastName = lastName || user.profile?.lastName || "";
+    const resolvedName = name || `${resolvedFirstName} ${resolvedLastName}`.trim();
+
+    if (!resolvedName) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required",
+        data: null,
+      });
+    }
+
+    user.username = username.toLowerCase();
+    user.name = resolvedName;
+    user.isProfileComplete = true;
+
+    if (role) user.role = role;
+    if (profilePicture) user.profilePicture = profilePicture;
+    if (dateOfBirth) user.profile.dateOfBirth = new Date(dateOfBirth);
+    if (firstName) user.profile.firstName = firstName;
+    if (lastName) user.profile.lastName = lastName;
+    if (bio) user.profile.bio = bio;
+
+    user.onboarding = user.onboarding || {
+      status: "profile",
+      step: "profile",
+      source: "unknown",
+    };
+    user.onboarding.status = "complete";
+    user.onboarding.step = "complete";
+    user.onboarding.updatedAt = new Date();
+
+    await user.save();
+
+    // Generate new token with updated info
+    const authToken = user.generateAuthToken();
+
+    res.json({
+      success: true,
+      message: "Profile completed successfully! Welcome to PrepMate.",
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          emailVerified: user.emailVerified,
+          isProfileComplete: true,
+          profilePicture: user.profilePicture,
+          onboarding: buildOnboardingPayload(user),
+        },
+        token: authToken,
+      },
+    });
+  })
+);
+
+// @desc    Get onboarding state
+// @route   GET /api/auth/onboarding-state
+// @access  Private
+router.get(
+  "/onboarding-state",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        onboarding: buildOnboardingPayload(user),
+        user: {
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          username: user.username,
+          profilePicture: user.profilePicture,
+          isProfileComplete: user.isProfileComplete,
+          profile: {
+            firstName: user.profile?.firstName || "",
+            lastName: user.profile?.lastName || "",
+            dateOfBirth: user.profile?.dateOfBirth || null,
+          },
+        },
+      },
+    });
+  })
+);
+
+// @desc    Update onboarding draft state
+// @route   POST /api/auth/onboarding-state
+// @access  Private
+router.post(
+  "/onboarding-state",
+  authenticateToken,
+  asyncHandler(async (req, res) => {
+    const { step, profileDraft, usernameDraft } = req.body || {};
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!user.onboarding) {
+      user.onboarding = {
+        status: "profile",
+        step: "profile",
+        source: user.googleId ? "google" : "email",
+        updatedAt: new Date(),
+      };
+    }
+
+    if (step && ["profile", "username", "complete"].includes(step)) {
+      user.onboarding.step = step;
+      user.onboarding.status = user.isProfileComplete ? "complete" : step;
+    }
+
+    if (profileDraft && typeof profileDraft === "object") {
+      user.onboarding.profileDraft = {
+        ...user.onboarding.profileDraft,
+        ...profileDraft,
+      };
+    }
+
+    if (typeof usernameDraft === "string") {
+      user.onboarding.usernameDraft = usernameDraft.toLowerCase();
+    }
+
+    user.onboarding.updatedAt = new Date();
+    await user.save();
+
+    res.json({
+      success: true,
+      data: {
+        onboarding: buildOnboardingPayload(user),
+      },
+    });
+  })
+);
+
+// @desc    Save onboarding profile step
+// @route   POST /api/auth/onboarding/profile
+// @access  Private
+router.post(
+  "/onboarding/profile",
+  authenticateToken,
+  [
+    body("firstName")
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("First name is required"),
+    body("lastName")
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Last name is required"),
+    body("dateOfBirth")
+      .optional({ nullable: true })
+      .isISO8601()
+      .withMessage("Invalid date format"),
+    body("profilePicture").optional().isURL().withMessage("Invalid profile picture URL"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
+    const { firstName, lastName, dateOfBirth, profilePicture } = req.body;
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.profile = user.profile || {};
+    user.profile.firstName = firstName;
+    user.profile.lastName = lastName;
+    user.profile.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+    user.name = `${firstName} ${lastName}`.trim();
+
+    if (profilePicture) {
+      user.profilePicture = profilePicture;
+    }
+
+    user.onboarding = user.onboarding || {
+      status: "profile",
+      step: "profile",
+      source: user.googleId ? "google" : "email",
+    };
+    user.onboarding.profileDraft = {
+      firstName,
+      lastName,
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+      profilePicture: profilePicture || user.profilePicture || "",
+    };
+    user.onboarding.status = "username";
+    user.onboarding.step = "username";
+    user.onboarding.updatedAt = new Date();
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Profile step saved",
+      data: {
+        onboarding: buildOnboardingPayload(user),
+      },
+    });
+  })
+);
+
+// @desc    Save onboarding username step
+// @route   POST /api/auth/onboarding/username
+// @access  Private
+router.post(
+  "/onboarding/username",
+  authenticateToken,
+  usernameValidationRules,
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
+    const { username } = req.body;
+    const normalized = username.toLowerCase();
+
+    const existingUser = await User.findOne({
+      username: normalized,
+      _id: { $ne: req.user.id },
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is already taken",
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.username = normalized;
+    user.isProfileComplete = true;
+    user.onboarding = user.onboarding || {
+      status: "username",
+      step: "username",
+      source: "unknown",
+    };
+    user.onboarding.status = "complete";
+    user.onboarding.step = "complete";
+    user.onboarding.usernameDraft = normalized;
+    user.onboarding.updatedAt = new Date();
+
+    await user.save();
+
+    const token = user.generateAuthToken();
+
+    res.json({
+      success: true,
+      message: "Onboarding completed",
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          emailVerified: user.emailVerified,
+          isProfileComplete: user.isProfileComplete,
+          profilePicture: user.profilePicture,
+          onboarding: buildOnboardingPayload(user),
+        },
+        token,
+      },
+    });
+  })
+);
+
+// @desc    Upload profile picture during onboarding (authenticated)
+// @route   POST /api/auth/onboarding/upload-profile-picture
+// @access  Private
+router.post(
+  "/onboarding/upload-profile-picture",
+  authenticateToken,
+  onboardingUpload.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!isCloudinaryConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: "Image upload service is not configured.",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded.",
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const processedBuffer = await processImageBuffer(req.file.buffer, {
+      width: 400,
+      height: 400,
+      fit: "cover",
+      quality: 82,
+      maxPixels: Number(process.env.IMAGE_MAX_PIXELS || 25000000),
+    });
+
+    const result = await uploadBuffer(processedBuffer, {
+      folder: "profile-pictures",
+      transformation: [{ width: 400, height: 400, crop: "fill", gravity: "face" }],
+    });
+
+    user.profilePicture = result.secure_url;
+    user.onboarding = user.onboarding || {
+      status: "profile",
+      step: "profile",
+      source: "unknown",
+    };
+    user.onboarding.profileDraft = {
+      ...user.onboarding.profileDraft,
+      profilePicture: result.secure_url,
+    };
+    user.onboarding.updatedAt = new Date();
+    await user.save();
+
+    res.json({
+      success: true,
+      data: {
+        url: result.secure_url,
+        publicId: result.public_id,
+      },
+    });
+  })
+);
+
+// @desc    Check if email has pending signup
+// @route   GET /api/auth/pending-signup-status
+// @access  Public
+router.get(
+  "/pending-signup-status",
+  asyncHandler(async (req, res) => {
+    const { email } = req.query;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+        data: null,
+      });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    const pendingSignup = await PendingSignup.findByEmail(normalizedEmail);
+
+    if (!pendingSignup) {
+      return res.json({
+        success: true,
+        message: "No pending signup found",
+        data: {
+          hasPendingSignup: false,
+        },
+      });
+    }
+
+    // Check if expired
+    const isExpired = Date.now() > pendingSignup.expiresAt.getTime();
+    if (isExpired) {
+      await PendingSignup.deleteOne({ _id: pendingSignup._id });
+      return res.json({
+        success: true,
+        message: "Pending signup expired",
+        data: {
+          hasPendingSignup: false,
+          expired: true,
+        },
+      });
+    }
+
+    // Calculate remaining time
+    const remainingSeconds = Math.max(0, Math.floor(
+      (pendingSignup.expiresAt.getTime() - Date.now()) / 1000
+    ));
+
+    res.json({
+      success: true,
+      message: "Pending signup found",
+      data: {
+        hasPendingSignup: true,
+        email: pendingSignup.email,
+        expiresIn: remainingSeconds,
+        isVerified: pendingSignup.isVerified,
+        resendCount: pendingSignup.resendCount,
+      },
+    });
+  })
+);
+
+// @desc    Cleanup expired pending signups (admin only or scheduled job)
+// @route   POST /api/auth/cleanup-pending-signups
+// @access  Public (for scheduled jobs) or Private (for admin)
+router.post(
+  "/cleanup-pending-signups",
+  asyncHandler(async (req, res) => {
+    // If auth header is present, verify admin
+    if (req.headers.authorization) {
+      try {
+        await authenticateToken(req, res, () => {});
+        if (req.user?.role !== "admin") {
+          return res.status(403).json({
+            success: false,
+            message: "Admin access required",
+            data: null,
+          });
+        }
+      } catch (error) {
+        // Continue without auth for scheduled jobs
+      }
+    }
+
+    const deletedCount = await PendingSignup.cleanupExpired();
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${deletedCount} expired pending signups`,
+      data: {
+        deletedCount,
+      },
+    });
+  })
+);
+
+// @desc    Check username availability
+// @route   POST /api/auth/check-username
+// @access  Public
+router.post(
+  "/check-username",
+  asyncHandler(async (req, res) => {
+    const { username } = req.body;
+
+    if (!username || !/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid username format",
+        data: { available: false },
+      });
+    }
+
+    const normalized = username.toLowerCase();
+    const exists = await User.findOne({ username: normalized });
+
+    res.json({
+      success: true,
+      data: { available: !exists, username: normalized },
+    });
+  })
+);
+
+// @desc    Complete Profile (After Email Verification)
+// @route   POST /api/auth/complete-profile
+// @access  Private (requires auth token from email verification)
+router.post(
+  "/complete-profile",
+  authenticateToken,
+  [
+    body("username")
+      .trim()
+      .isLength({ min: 3, max: 30 })
+      .withMessage("Username must be 3-30 characters")
+      .matches(/^[a-zA-Z0-9_]+$/)
+      .withMessage("Username can only contain letters, numbers, and underscores"),
+    body("name")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Name must be less than 50 characters"),
+    body("firstName")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("First name must be less than 50 characters"),
+    body("lastName")
+      .optional()
+      .trim()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Last name must be less than 50 characters"),
+    body("role")
+      .optional()
+      .isIn(["student", "teacher", "hr"])
+      .withMessage("Invalid role"),
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        data: null,
+        errors: errors.array(),
+      });
+    }
+
+    const { username, name, firstName, lastName, role, profilePicture } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.isProfileComplete && user.username) {
+      return res.status(400).json({
+        success: false,
+        message: "Profile is already complete",
+      });
+    }
+
+    const normalizedUsername = username.toLowerCase();
+    const existing = await User.findOne({
+      username: normalizedUsername,
+      _id: { $ne: userId },
+    });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is already taken. Please choose another.",
+      });
+    }
+
+    const resolvedName = name || `${firstName || ""} ${lastName || ""}`.trim();
+    if (!resolvedName) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required",
+      });
+    }
+
+    user.username = normalizedUsername;
+    user.name = resolvedName.trim();
+    user.isProfileComplete = true;
+    if (role) user.role = role;
+    if (profilePicture) user.profilePicture = profilePicture;
+    if (firstName) user.profile.firstName = firstName;
+    if (lastName) user.profile.lastName = lastName;
+
+    user.onboarding = user.onboarding || {
+      status: "profile",
+      step: "profile",
+      source: "unknown",
+    };
+    user.onboarding.status = "complete";
+    user.onboarding.step = "complete";
+    user.onboarding.updatedAt = new Date();
+
+    await user.save();
+
+    const authToken = user.generateAuthToken();
+
+    res.json({
+      success: true,
+      message: "Profile completed successfully! Welcome to PrepMate.",
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          emailVerified: user.emailVerified,
+          isProfileComplete: true,
+          profilePicture: user.profilePicture,
+          onboarding: buildOnboardingPayload(user),
+        },
+        token: authToken,
+      },
+    });
+  })
+);
+
+// Legacy endpoints - keeping for backward compatibility during transition
+// These will be deprecated and removed in future versions
+
+// @desc    Verify Email with Token
+// @route   POST /api/auth/verify-email
+// @access  Public
+router.post(
+  "/verify-email",
+  [body("token").notEmpty().withMessage("Verification token is required")],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
+    const { token } = req.body;
+
+    // Hash the token to compare with stored hash
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    // Find user with matching token and non-expired token
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid or expired verification token. Please request a new one.",
+      });
+    }
+
+    // Mark email as verified
+    user.emailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    res.json({
+      success: true,
+      message:
+        "Email verified successfully. Please complete your profile to continue.",
+      data: {
+        email: user.email,
+        emailVerified: true,
+      },
+    });
+  })
+);
+
+// @desc    Check Username Availability (Debounced)
+// @route   GET /api/auth/check-username
+// @access  Public
+router.get(
+  "/check-username",
+  asyncHandler(async (req, res) => {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        success: false,
+        message: "Username is required",
+      });
+    }
+
+    // Validate format
+    if (username.length < 3 || username.length > 30) {
+      return res.json({
+        available: false,
+        reason: "Username must be 3-30 characters",
+      });
+    }
+
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return res.json({
+        available: false,
+        reason: "Username can only contain letters, numbers, and underscores",
+      });
+    }
+
+    // Check if username is taken (use lean query for performance)
+    const existingUser = await User.findOne({
+      username: username.toLowerCase(),
+    }).lean();
+
+    res.json({
+      available: !existingUser,
+    });
+  })
+);
+
+// @desc    Upload profile picture during onboarding (email verification token required)
+// @route   POST /api/auth/upload-profile-picture
+// @access  Public (requires valid email verification token)
+router.post(
+  "/upload-profile-picture",
+  onboardingUpload.single("file"),
+  asyncHandler(async (req, res) => {
+    if (!isCloudinaryConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: "Image upload service is not configured.",
+      });
+    }
+
+    const { email, token } = req.body;
+    if (!email || !token) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and verification token are required.",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded.",
+      });
+    }
+
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    const user = await User.findOne({
+      email: String(email).toLowerCase(),
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email verification. Please verify your email first.",
+      });
+    }
+
+    const processedBuffer = await processImageBuffer(req.file.buffer, {
+      width: 400,
+      height: 400,
+      fit: "cover",
+      quality: 82,
+      maxPixels: Number(process.env.IMAGE_MAX_PIXELS || 25000000),
+    });
+
+    const result = await uploadBuffer(processedBuffer, {
+      folder: "profile-pictures",
+      transformation: [{ width: 400, height: 400, crop: "fill", gravity: "face" }],
+    });
+
+    res.json({
+      success: true,
+      data: {
+        url: result.secure_url,
+        publicId: result.public_id,
+      },
+    });
+  })
+);
+
+// @desc    Get Blacklist Statistics (for debugging)
 // @route   GET /api/auth/blacklist-stats
-// @access  Private (Admin only)
+// @access  Protected (admin)
 router.get(
   "/blacklist-stats",
   authenticateToken,
   asyncHandler(async (req, res) => {
     // Only allow admin to view blacklist stats
-    if (req.user.role !== "admin") {
+    if (!req.user || req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Access denied. Admin only.",

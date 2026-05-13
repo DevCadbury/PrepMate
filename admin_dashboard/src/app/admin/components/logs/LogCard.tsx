@@ -109,7 +109,7 @@ export function LogCard({ log, isSelected, onClick, isLast }: LogCardProps) {
             {/* Actor row */}
             <div className="flex items-center gap-2 min-w-0">
               <div className={`inline-flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] text-white ${log.actor.color}`}>
-                {log.actor.initials.charAt(0)}
+                {log.actor.initials?.charAt(0) || '?'}
               </div>
               <span className="text-xs text-muted-foreground truncate">{log.actor.name}</span>
               {log.actor.type === 'system' && (

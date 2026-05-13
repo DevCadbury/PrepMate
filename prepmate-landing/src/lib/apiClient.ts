@@ -1,3 +1,5 @@
+import { envConfig } from "../config/env";
+
 const DEFAULT_API_BASE_PATH = "/api";
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
@@ -20,10 +22,8 @@ const normalizeApiBaseUrl = (value: string | undefined) => {
   return `/${withoutTrailingSlash}`;
 };
 
-const rawBaseUrl =
-  process.env.REACT_APP_API_BASE_URL ||
-  process.env.REACT_APP_API_URL ||
-  DEFAULT_API_BASE_PATH;
+// Decide API base URL via centralized env config
+let rawBaseUrl = envConfig.apiBaseUrl || DEFAULT_API_BASE_PATH;
 
 const normalizedBaseUrl = normalizeApiBaseUrl(rawBaseUrl);
 const baseUrl = new URL(normalizedBaseUrl, window.location.origin);

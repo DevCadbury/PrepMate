@@ -30,7 +30,7 @@ import { Input } from "../ui/input";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useToast, ToastContainer } from "../ui/toast";
+import { useToast } from "../ui/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -105,8 +105,7 @@ interface StudentDashboardProps {
 const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const { toasts, success, error: showError, warning, info, removeToast } =
-    useToast();
+  const { success, error: showError, warning, info } = useToast();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any>({
@@ -862,7 +861,6 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
 
   return (
     <>
-      <ToastContainer toasts={toasts} onClose={removeToast} />
       <div className="h-screen overflow-hidden bg-background text-foreground">
         {/* Header */}
         <header className="fixed top-0 left-0 right-0 z-50 w-full border-b bg-background/95 backdrop-blur">

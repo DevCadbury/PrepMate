@@ -186,13 +186,14 @@ export const deriveRestriction = (
 
 export const mapBackendUserToUsersRow = (user: BackendUserRecord) => {
   const roleLabel = user.adminRole ? user.adminRole.replace(/_/g, ' ') : user.role;
+  const userName = user.name || user.email?.split('@')[0] || 'Unknown';
 
   return {
     id: user.id,
-    name: user.name,
-    email: user.email,
-    role: roleLabel || user.role,
-    status: user.status === 'pending' ? 'suspended' : user.status,
+    name: userName,
+    email: user.email || '',
+    role: roleLabel || user.role || 'user',
+    status: (user.status === 'pending' ? 'suspended' : user.status) || 'active',
     joinedAt: formatDisplayDate(user.joinDate),
     lastActive: formatRelativeTime(user.lastLogin),
     posts: 0,

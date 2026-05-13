@@ -1,12 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { AnimatePresence } from "framer-motion";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { initializeIndianVoices } from "./services/initIndianVoices";
 import { responsiveVoiceService } from "./services/responsiveVoiceService";
-import SignInModal from "./components/SignInModal";
-import SignUpModal from "./components/SignUpModal";
 import AuthCallback from "./components/AuthCallback";
 import AdminAuthCallback from "./components/AdminAuthCallback";
 import StudentDashboard from "./components/dashboards/StudentDashboard";
@@ -18,15 +15,15 @@ import GoogleAuthCallback from "./components/GoogleAuthCallback";
 import GoogleAuthError from "./components/GoogleAuthError";
 import TestGoogleAuth from "./components/TestGoogleAuth";
 import ResetPasswordPage from "./components/ResetPasswordPage";
+import OnboardingFlow from "./components/OnboardingFlow";
 import LandingPage from "./components/dashboards/pages/LandingPage";
 import AdminRoutes from "./app/AdminRoutes";
+import { ToastProvider } from "./components/ui/toast";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
 
 let voiceServicesInitialized = false;
 
 function App() {
-  const [showSignIn, setShowSignIn] = useState(false);
-  const [showSignUp, setShowSignUp] = useState(false);
-
   // Initialize voice services on app startup
   useEffect(() => {
     if (voiceServicesInitialized) {
@@ -66,8 +63,9 @@ function App() {
 
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <ToastProvider>
+        <Router>
+          <Routes>
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/admin/auth/callback" element={<AdminAuthCallback />} />
           <Route path="/select-username" element={<UsernameSelection />} />
@@ -116,6 +114,8 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LandingPage />} />
           <Route path="/register" element={<LandingPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/onboarding" element={<OnboardingFlow />} />
           <Route path="/auth/google/success" element={<GoogleAuthCallback />} />
           <Route path="/auth/google/error" element={<GoogleAuthError />} />
           <Route path="/test-google-auth" element={<TestGoogleAuth />} />
@@ -230,11 +230,8 @@ function App() {
           <Route path="/admin-callback" element={<AdminAuthCallback />} />
         </Routes>
 
-        <AnimatePresence>
-          {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
-          {showSignUp && <SignUpModal onClose={() => setShowSignUp(false)} />}
-        </AnimatePresence>
-      </Router>
+        </Router>
+      </ToastProvider>
     </AuthProvider>
   );
 }

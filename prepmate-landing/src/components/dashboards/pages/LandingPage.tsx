@@ -8,13 +8,11 @@ import Testimonials from "../../Testimonials";
 import Contact from "../../Contact";
 import Footer from "../../Footer";
 import SignInModal from "../../SignInModal";
-import SignUpModal from "../../SignUpModal";
-import { useToast, ToastContainer } from "../../ui/toast";
+import SimplifiedSignUpModal from "../../SimplifiedSignUpModal";
 
 const LandingPage: React.FC = () => {
   const [showSignIn, setShowSignIn] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
-  const { toasts, removeToast } = useToast();
 
   const handleGetStarted = () => {
     setShowSignUp(true);
@@ -35,11 +33,21 @@ const LandingPage: React.FC = () => {
       <Footer />
 
       <AnimatePresence>
-        {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
-        {showSignUp && <SignUpModal onClose={() => setShowSignUp(false)} />}
+        {showSignIn && (
+          <SignInModal
+            key="signin-modal"
+            onClose={() => setShowSignIn(false)}
+            onSwitchToSignUp={() => setShowSignUp(true)}
+          />
+        )}
+        {showSignUp && (
+          <SimplifiedSignUpModal
+            key="signup-modal"
+            onClose={() => setShowSignUp(false)}
+          />
+        )}
       </AnimatePresence>
 
-      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 };

@@ -205,15 +205,15 @@ export default function CodingPage() {
   }, [fetchData]);
 
   const filteredProblems = useMemo(() => {
-    return problems.filter((problem) => {
-      const q = searchQuery.toLowerCase();
+    return (problems || []).filter((problem) => {
+      const q = (searchQuery || '').toLowerCase();
       const matchesSearch =
         !q ||
-        problem.title.toLowerCase().includes(q) ||
-        problem.category.toLowerCase().includes(q) ||
-        problem.tags.some((tag) => tag.includes(q));
-      const matchesDifficulty = difficultyFilter === 'all' || problem.difficulty === difficultyFilter;
-      const matchesStatus = statusFilter === 'all' || problem.status === statusFilter;
+        (problem?.title || '').toLowerCase().includes(q) ||
+        (problem?.category || '').toLowerCase().includes(q) ||
+        (problem?.tags || []).some((tag: string) => (tag || '').includes(q));
+      const matchesDifficulty = difficultyFilter === 'all' || problem?.difficulty === difficultyFilter;
+      const matchesStatus = statusFilter === 'all' || problem?.status === statusFilter;
       return matchesSearch && matchesDifficulty && matchesStatus;
     });
   }, [problems, searchQuery, difficultyFilter, statusFilter]);

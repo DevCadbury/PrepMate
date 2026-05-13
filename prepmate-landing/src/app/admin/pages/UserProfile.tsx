@@ -76,9 +76,11 @@ const riskColors = {
   high: { bg: 'bg-red-500/10', text: 'text-red-700 dark:text-red-400', border: 'border-red-200 dark:border-red-800', dot: 'bg-red-500' },
 };
 
-const deviceIcon = (device: string) => {
-  if (device.toLowerCase().includes('mobile')) return Smartphone;
-  if (device.toLowerCase().includes('tablet')) return Tablet;
+const deviceIcon = (device: string | undefined | null) => {
+  if (!device) return Laptop;
+  const d = device.toLowerCase();
+  if (d.includes('mobile')) return Smartphone;
+  if (d.includes('tablet')) return Tablet;
   return Laptop;
 };
 
@@ -505,9 +507,9 @@ export default function UserProfilePage() {
   }
 
   // Filtered data
-  const filteredActivity = activity.filter(a => {
-    if (activityFilter !== 'all' && a.type !== activityFilter) return false;
-    if (activitySearch && !a.action.toLowerCase().includes(activitySearch.toLowerCase()) && !(a.details || '').toLowerCase().includes(activitySearch.toLowerCase())) return false;
+  const filteredActivity = (activity || []).filter(a => {
+    if (activityFilter !== 'all' && a?.type !== activityFilter) return false;
+    if (activitySearch && !(a?.action || '').toLowerCase().includes((activitySearch || '').toLowerCase()) && !((a?.details || '').toLowerCase().includes((activitySearch || '').toLowerCase()))) return false;
     return true;
   });
 
@@ -657,7 +659,7 @@ export default function UserProfilePage() {
         {/* Profile header */}
         <div className="flex items-start gap-4 pb-4">
           <Avatar className="size-14 border-2 border-border shrink-0">
-            <AvatarFallback className="text-lg bg-primary/10 text-primary">{user.name.charAt(0)}</AvatarFallback>
+            <AvatarFallback className="text-lg bg-primary/10 text-primary">{(user.name || '?').charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-4">
@@ -1177,7 +1179,7 @@ export default function UserProfilePage() {
                   <div className="space-y-2">
                     {followersList.map(f => (
                       <div key={f.id} className="flex items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted/30 transition-colors">
-                        <Avatar className="size-8"><AvatarFallback className="text-[10px]">{f.name.charAt(0)}</AvatarFallback></Avatar>
+                        <Avatar className="size-8"><AvatarFallback className="text-[10px]">{(f.name || '?').charAt(0).toUpperCase()}</AvatarFallback></Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm">{f.name}</span>
@@ -1206,7 +1208,7 @@ export default function UserProfilePage() {
                   <div className="space-y-2">
                     {followingList.map(f => (
                       <div key={f.id} className="flex items-center gap-3 rounded-lg border border-border p-3 hover:bg-muted/30 transition-colors">
-                        <Avatar className="size-8"><AvatarFallback className="text-[10px]">{f.name.charAt(0)}</AvatarFallback></Avatar>
+                        <Avatar className="size-8"><AvatarFallback className="text-[10px]">{(f.name || '?').charAt(0).toUpperCase()}</AvatarFallback></Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm">{f.name}</span>
@@ -1465,7 +1467,7 @@ export default function UserProfilePage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-              <Avatar className="size-10"><AvatarFallback>{user.name.charAt(0)}</AvatarFallback></Avatar>
+              <Avatar className="size-10"><AvatarFallback>{(user.name || '?').charAt(0).toUpperCase()}</AvatarFallback></Avatar>
               <div>
                 <div className="text-sm">{user.name}</div>
                 <div className="text-xs text-muted-foreground">{user.email}</div>

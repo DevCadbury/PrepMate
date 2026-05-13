@@ -118,7 +118,7 @@ export default function ReportedContentViewer({
                       <div className="flex items-center gap-4">
                         <Avatar className="size-12">
                           <AvatarFallback className="bg-primary text-primary-foreground">
-                            {content.author.name.charAt(0)}
+                            {(content.author.name || '?').charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div>
@@ -205,7 +205,7 @@ export default function ReportedContentViewer({
                             <div className="flex items-center gap-2">
                               <Avatar className="size-8">
                                 <AvatarFallback className="text-xs">
-                                  {reporter.name.charAt(0)}
+                                  {(reporter.name || '?').charAt(0).toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
                               <div>

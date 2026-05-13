@@ -102,15 +102,15 @@ export default function AdminManagementPage() {
 
   const filteredAdmins = admins.filter(
     (admin) =>
-      admin.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      admin.email.toLowerCase().includes(searchQuery.toLowerCase())
+      (admin.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (admin.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredLogs = logs.filter(log => {
     const matchesSearch = logSearch === '' ||
-      log.action.toLowerCase().includes(logSearch.toLowerCase()) ||
-      log.target.toLowerCase().includes(logSearch.toLowerCase()) ||
-      log.details.toLowerCase().includes(logSearch.toLowerCase());
+      (log.action || '').toLowerCase().includes(logSearch.toLowerCase()) ||
+      (log.target || '').toLowerCase().includes(logSearch.toLowerCase()) ||
+      (log.details || '').toLowerCase().includes(logSearch.toLowerCase());
     const matchesType = logTypeFilter === 'all' || log.type === logTypeFilter;
     const matchesAdmin = logAdminFilter === 'all' || log.adminEmail === logAdminFilter;
     return matchesSearch && matchesType && matchesAdmin;
@@ -202,7 +202,7 @@ export default function AdminManagementPage() {
                       <div className="flex items-center gap-3">
                         <Avatar>
                           <AvatarFallback className="bg-primary/10 text-primary">
-                            {admin.name.charAt(0)}
+                            {(admin.name || '?').charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div>

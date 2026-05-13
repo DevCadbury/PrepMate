@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 const os = require("os");
 const logger = require("./logger");
+const emailService = require("./emailService");
+const { getHealthEvents } = require("./healthMonitor");
 
 class HealthCheck {
   constructor() {
@@ -11,7 +13,12 @@ class HealthCheck {
       cpu: false,
       disk: false,
       api: false,
+      email: false,
     };
+  }
+
+  getUptimeMs() {
+    return Date.now() - this.startTime.getTime();
   }
 
   // Check database connection
@@ -164,27 +171,45 @@ class HealthCheck {
     }
   }
 
+  checkEmailService() {
+    try {
+      const status = emailService.getStatus();
+      this.checks.email = Boolean(status.configured);
+
+      return {
+        status: this.checks.email ? "healthy" : "warning",
+        details: {
+          configured: status.configured,
+          provider: status.provider,
+          fromAddress: status.fromAddress,
+          smtp: status.smtp,
+          lastVerifiedAt: status.lastVerifiedAt,
+          lastTestError: status.lastTestError,
+          lastDeliveredAt: status.lastDeliveredAt,
+        },
+      };
+    } catch (error) {
+      logger.error("Email service health check failed:", error);
+      return {
+        status: "unhealthy",
+        details: {
+          error: error.message,
+        },
+      };
+    }
+  }
+
   // Get overall health status
   async getOverallHealth() {
     try {
-      console.log("🔍 Starting health check...");
-
       const database = await this.checkDatabase();
-      console.log("📊 Database check:", database.status);
-
       const memory = this.checkMemory();
-      console.log("📊 Memory check:", memory.status);
-
       const cpu = this.checkCPU();
-      console.log("📊 CPU check:", cpu.status);
-
       const disk = this.checkDisk();
-      console.log("📊 Disk check:", disk.status);
-
       const api = await this.checkAPI();
-      console.log("📊 API check:", api.status);
+      const email = this.checkEmailService();
 
-      const allChecks = [database, memory, cpu, disk, api];
+      const allChecks = [database, memory, cpu, disk, api, email];
       const healthyChecks = allChecks.filter(
         (check) => check.status === "healthy"
       ).length;
@@ -197,13 +222,11 @@ class HealthCheck {
         overallStatus = "warning";
       }
 
-      console.log("📊 Overall health:", overallStatus);
-      console.log("📊 Healthy checks:", healthyChecks, "/", totalChecks);
-
       return {
         status: overallStatus,
         timestamp: new Date().toISOString(),
         uptime: this.getUptime(),
+        uptimeMs: this.getUptimeMs(),
         version: process.env.npm_package_version || "1.0.0",
         environment: process.env.NODE_ENV || "development",
         checks: {
@@ -212,7 +235,9 @@ class HealthCheck {
           cpu,
           disk,
           api,
+          email,
         },
+        events: getHealthEvents(),
         summary: {
           total: totalChecks,
           healthy: healthyChecks,
@@ -223,11 +248,12 @@ class HealthCheck {
         },
       };
     } catch (error) {
-      console.error("❌ Health check failed:", error);
+      logger.error("Health check failed:", error);
       return {
         status: "unhealthy",
         timestamp: new Date().toISOString(),
         uptime: this.getUptime(),
+        uptimeMs: this.getUptimeMs(),
         version: process.env.npm_package_version || "1.0.0",
         environment: process.env.NODE_ENV || "development",
         error: error.message,
@@ -237,12 +263,14 @@ class HealthCheck {
           cpu: { status: "unhealthy", details: { error: error.message } },
           disk: { status: "unhealthy", details: { error: error.message } },
           api: { status: "unhealthy", details: { error: error.message } },
+          email: { status: "unhealthy", details: { error: error.message } },
         },
+        events: getHealthEvents(),
         summary: {
-          total: 5,
+          total: 6,
           healthy: 0,
           warning: 0,
-          unhealthy: 5,
+          unhealthy: 6,
         },
       };
     }

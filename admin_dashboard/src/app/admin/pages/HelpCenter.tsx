@@ -79,10 +79,10 @@ export default function HelpCenterPage() {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         !q ||
-        ticket.id.toLowerCase().includes(q) ||
-        ticket.userEmail.toLowerCase().includes(q) ||
-        ticket.userName.toLowerCase().includes(q) ||
-        ticket.subject.toLowerCase().includes(q);
+        (ticket.id || '').toLowerCase().includes(q) ||
+        (ticket.userEmail || '').toLowerCase().includes(q) ||
+        (ticket.userName || '').toLowerCase().includes(q) ||
+        (ticket.subject || '').toLowerCase().includes(q);
 
       const matchesStatus =
         statusFilter === 'all' || ticket.status === statusFilter;

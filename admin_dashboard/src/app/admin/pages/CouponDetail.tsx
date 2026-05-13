@@ -212,11 +212,11 @@ export default function CouponDetailPage() {
               <button onClick={copyCode} className="text-muted-foreground hover:text-foreground">
                 <Copy className="size-3.5" />
               </button>
-              <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getCouponStatusColor(status))}>
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+              <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getCouponStatusColor(status || ''))}>
+                {((status || 'x').charAt(0).toUpperCase() + (status || 'x').slice(1))}
               </span>
-              <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getVariantColor(coupon.variant))}>
-                {coupon.variant.charAt(0).toUpperCase() + coupon.variant.slice(1)}
+              <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getVariantColor(coupon.variant || ''))}>
+                {((coupon.variant || 'x').charAt(0).toUpperCase() + (coupon.variant || 'x').slice(1))}
               </span>
             </div>
             <p className="text-[12px] text-muted-foreground mt-0.5 max-w-[400px] truncate">{coupon.description}</p>

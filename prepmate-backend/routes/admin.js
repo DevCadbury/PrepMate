@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs/promises");
 const crypto = require("crypto");
+const { getFrontendBaseUrl } = require("../utils/urlConfig");
 
 const User = require("../models/User");
 const Post = require("../models/Post");
@@ -1602,7 +1603,7 @@ router.post(
       const resetToken = user.generatePasswordResetToken();
       await user.save();
 
-      const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/reset-password/${resetToken}`;
+      const resetUrl = `${getFrontendBaseUrl()}/reset-password/${resetToken}`;
 
       res.json({
         success: true,

@@ -160,11 +160,14 @@ export default function UsersPage() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetSending, setResetSending] = useState(false);
 
-  const filteredUsers = users.filter((user) => {
+  const filteredUsers = (users || []).filter((user) => {
+    const name = (user?.name || '') as string;
+    const email = (user?.email || '') as string;
+    const sq = (searchQuery || '') as string;
     const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+      name.toLowerCase().includes(sq.toLowerCase()) ||
+      email.toLowerCase().includes(sq.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || user?.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -361,7 +364,7 @@ export default function UsersPage() {
                 <TableCell>
                   <div className="flex items-center gap-3 cursor-pointer group" onClick={() => handleViewProfile(user)}>
                     <Avatar>
-                      <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                      <AvatarFallback>{(user.name || '?').charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
                       <div className="text-sm group-hover:text-primary transition-colors">{user.name}</div>
@@ -656,7 +659,7 @@ export default function UsersPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-lg border border-border p-3">
-              <Avatar className="size-10"><AvatarFallback>{actionDialog.user?.name.charAt(0)}</AvatarFallback></Avatar>
+              <Avatar className="size-10"><AvatarFallback>{(actionDialog.user?.name || actionDialog.user?.email || '?').charAt(0).toUpperCase()}</AvatarFallback></Avatar>
               <div>
                 <div className="text-sm">{actionDialog.user?.name}</div>
                 <div className="text-xs text-muted-foreground">{actionDialog.user?.email}</div>

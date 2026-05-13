@@ -415,6 +415,17 @@ const authenticateToken = asyncHandler(async (req, res, next) => {
       });
     }
 
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Please verify your email address before accessing this feature.",
+        requiresEmailVerification: true,
+        emailVerified: false,
+        resendVerificationAvailable: true,
+      });
+    }
+
     // Attach user to request
     req.user = user;
     next();

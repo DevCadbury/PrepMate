@@ -7,8 +7,8 @@ const userSchema = new mongoose.Schema(
   {
     username: {
       type: String,
-      required: [true, "Please provide a username"],
       unique: true,
+      sparse: true, // Allow documents without username field - won't be indexed
       trim: true,
       minlength: [3, "Username must be at least 3 characters"],
       maxlength: [30, "Username cannot be more than 30 characters"],
@@ -17,12 +17,13 @@ const userSchema = new mongoose.Schema(
         "Username can only contain letters, numbers, and underscores",
       ],
       lowercase: true,
+      // Note: No default value - field won't exist until set
     },
     name: {
       type: String,
-      required: [true, "Please provide a name"],
       trim: true,
       maxlength: [50, "Name cannot be more than 50 characters"],
+      default: null,
     },
     email: {
       type: String,
@@ -87,12 +88,39 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    onboarding: {
+      status: {
+        type: String,
+        enum: ["pending", "profile", "username", "complete"],
+        default: "pending",
+      },
+      step: {
+        type: String,
+        enum: ["profile", "username", "complete"],
+        default: "profile",
+      },
+      source: {
+        type: String,
+        enum: ["email", "google", "unknown"],
+        default: "unknown",
+      },
+      profileDraft: {
+        firstName: { type: String, trim: true, maxlength: 50 },
+        lastName: { type: String, trim: true, maxlength: 50 },
+        dateOfBirth: { type: Date },
+        profilePicture: { type: String, default: "" },
+      },
+      usernameDraft: { type: String, trim: true, lowercase: true },
+      updatedAt: { type: Date, default: Date.now },
+    },
     emailVerified: {
       type: Boolean,
       default: false,
     },
     emailVerificationToken: String,
     emailVerificationExpires: Date,
+    emailVerificationOtp: String,
+    emailVerificationOtpExpires: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
     lastLogin: {
@@ -112,6 +140,16 @@ const userSchema = new mongoose.Schema(
 
     // Enhanced Profile Information
     profile: {
+      firstName: {
+        type: String,
+        trim: true,
+        maxlength: [50, "First name cannot be more than 50 characters"],
+      },
+      lastName: {
+        type: String,
+        trim: true,
+        maxlength: [50, "Last name cannot be more than 50 characters"],
+      },
       bio: {
         type: String,
         trim: true,
@@ -447,7 +485,18 @@ userSchema.virtual("postCount").get(function () {
 
 // Pre-save middleware to hash password
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") && !this._skipPasswordHashing) return next();
+  if (this._skipPasswordHashing) {
+    this._skipPasswordHashing = false;
+    return next();
+  }
+
+  const pwd = this.password;
+  if (!pwd) return next();
+
+  if (/^\$2[ab]?\$\d{2}\$[./A-Za-z0-9]{53}$/.test(pwd)) {
+    return next();
+  }
 
   try {
     const salt = await bcrypt.genSalt(12);
@@ -491,6 +540,16 @@ userSchema.methods.generateEmailVerificationToken = function () {
     .digest("hex");
   this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
   return token;
+};
+
+// Method to generate a short numeric OTP for email verification
+userSchema.methods.generateEmailVerificationOtp = function (digits = 6, expiresMinutes = 10) {
+  const max = Math.pow(10, digits) - 1;
+  const min = Math.pow(10, digits - 1);
+  const otpPlain = String(Math.floor(Math.random() * (max - min + 1)) + min);
+  this.emailVerificationOtp = crypto.createHash("sha256").update(otpPlain).digest("hex");
+  this.emailVerificationOtpExpires = Date.now() + (expiresMinutes || 10) * 60 * 1000; // default 10 minutes
+  return otpPlain;
 };
 
 // Method to generate password reset token

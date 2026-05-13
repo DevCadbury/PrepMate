@@ -164,7 +164,7 @@ export default function CouponsPage() {
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
-        (c) => c.code.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
+        (c) => (c.code || '').toLowerCase().includes(q) || (c.description || '').toLowerCase().includes(q)
       );
     }
     if (statusFilter !== 'all') result = result.filter((c) => c.status === statusFilter);
@@ -400,8 +400,8 @@ export default function CouponsPage() {
 
                     {/* Type / Variant */}
                     <TableCell className="py-3">
-                      <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getVariantColor(coupon.variant))}>
-                        {coupon.variant.charAt(0).toUpperCase() + coupon.variant.slice(1)}
+                      <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getVariantColor(coupon.variant || ''))}>
+                        {((coupon.variant || 'x').charAt(0).toUpperCase() + (coupon.variant || 'x').slice(1))}
                       </span>
                     </TableCell>
 
@@ -415,8 +415,8 @@ export default function CouponsPage() {
 
                     {/* Status */}
                     <TableCell className="py-3">
-                      <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getCouponStatusColor(coupon.status))}>
-                        {coupon.status.charAt(0).toUpperCase() + coupon.status.slice(1)}
+                      <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', getCouponStatusColor(coupon.status || ''))}>
+                        {((coupon.status || 'x').charAt(0).toUpperCase() + (coupon.status || 'x').slice(1))}
                       </span>
                     </TableCell>
 

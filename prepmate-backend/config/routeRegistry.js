@@ -11,6 +11,7 @@ const chatRoutes = require("../routes/chat");
 const supportRoutes = require("../routes/support");
 const aiRoutes = require("../routes/ai");
 const codingRoutes = require("../routes/coding");
+const uploadsRoutes = require("../routes/uploads");
 const healthRoutes = require("../routes/health");
 
 const apiRoutes = [
@@ -28,6 +29,7 @@ const apiRoutes = [
   { path: "/api/support", router: supportRoutes },
   { path: "/api/ai", router: aiRoutes },
   { path: "/api/coding", router: codingRoutes },
+  { path: "/api/uploads", router: uploadsRoutes },
 ];
 
 const healthRoutePaths = ["/health", "/api/health"];

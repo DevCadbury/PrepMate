@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const healthCheck = require("../utils/healthCheck");
 const logger = require("../utils/logger");
+const emailService = require("../utils/emailService");
 
 const serverStartedAt = new Date();
 
@@ -24,9 +25,7 @@ const formatUptime = (seconds) => {
 // Basic health check
 router.get("/", async (req, res) => {
   try {
-    console.log("🔍 Health check endpoint called");
     const health = await healthCheck.getOverallHealth();
-    console.log("📊 Health check completed, status:", health.status);
 
     // Set appropriate status code based on health
     const statusCode =
@@ -38,11 +37,25 @@ router.get("/", async (req, res) => {
 
     res.status(statusCode).json({
       success: true,
-      message: "PrepMate API Health Check",
+      message: "iPrepmate API Health Check",
+      service: "iPrepmate backend",
+      status: health.status,
+      timestamp: health.timestamp,
+      environment: health.environment,
+      uptime: health.uptime,
+      uptimeMs: health.uptimeMs,
+      dependencies: {
+        database: health.checks.database,
+        email: health.checks.email,
+        verification: {
+          enabled: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
+          configured: emailService.getStatus().configured,
+        },
+      },
       data: health,
     });
   } catch (error) {
-    console.error("❌ Health check error:", error);
+    logger.error("Health check error:", error);
     res.status(503).json({
       success: false,
       message: "Health check failed",
@@ -52,6 +65,17 @@ router.get("/", async (req, res) => {
           : "Internal error",
     });
   }
+});
+
+// Ping endpoint for monitoring and optional keep-alive
+router.get("/ping", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "pong",
+    service: "iPrepmate backend",
+    timestamp: new Date().toISOString(),
+    uptime: healthCheck.getUptime(),
+  });
 });
 
 // Detailed health check with specific components
@@ -246,6 +270,28 @@ router.get("/uptime", (req, res) => {
       now: new Date().toISOString(),
     },
   });
+});
+
+// SMTP smoke test endpoint for administrators and monitoring.
+router.post("/smtp/test", async (req, res) => {
+  try {
+    const result = await emailService.testConnection();
+    const statusCode = result.ok ? 200 : 503;
+
+    res.status(statusCode).json({
+      success: result.ok,
+      message: result.ok ? "SMTP connection verified" : "SMTP verification failed",
+      data: result,
+    });
+  } catch (error) {
+    logger.error("SMTP smoke test error:", error);
+    res.status(503).json({
+      success: false,
+      message: "SMTP smoke test failed",
+      error:
+        process.env.NODE_ENV === "development" ? error.message : "Internal error",
+    });
+  }
 });
 
 module.exports = router;

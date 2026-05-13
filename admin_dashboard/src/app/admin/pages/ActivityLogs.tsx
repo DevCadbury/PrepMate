@@ -110,11 +110,11 @@ export default function ActivityLogsPage() {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         !q ||
-        log.action.toLowerCase().includes(q) ||
-        log.target.label.toLowerCase().includes(q) ||
-        log.actor.name.toLowerCase().includes(q) ||
-        log.actor.email.toLowerCase().includes(q) ||
-        log.details.toLowerCase().includes(q);
+        (log.action || '').toLowerCase().includes(q) ||
+        (log.target.label || '').toLowerCase().includes(q) ||
+        (log.actor.name || '').toLowerCase().includes(q) ||
+        (log.actor.email || '').toLowerCase().includes(q) ||
+        (log.details || '').toLowerCase().includes(q);
       const matchesCategory = categoryFilter === 'all' || log.category === categoryFilter;
       const matchesActor = actorFilter === 'all' || log.actor.email === actorFilter;
       return matchesSearch && matchesCategory && matchesActor;

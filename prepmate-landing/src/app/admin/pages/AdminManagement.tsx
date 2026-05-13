@@ -225,25 +225,25 @@ export default function AdminManagementPage() {
   }, [fetchAdmins, fetchLogs]);
 
   const filteredAdmins = useMemo(
-    () => admins.filter(
+    () => (admins || []).filter(
       (admin) =>
-        admin.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        admin.email.toLowerCase().includes(searchQuery.toLowerCase())
+        (admin?.name || '').toLowerCase().includes((searchQuery || '').toLowerCase()) ||
+        (admin?.email || '').toLowerCase().includes((searchQuery || '').toLowerCase())
     ),
     [admins, searchQuery]
   );
 
-  const filteredLogs = useMemo(() => logs.filter((log) => {
-    const q = logSearch.toLowerCase();
+  const filteredLogs = useMemo(() => (logs || []).filter((log) => {
+    const q = (logSearch || '').toLowerCase();
     const matchesSearch =
       !q ||
-      log.action.toLowerCase().includes(q) ||
-      log.target.toLowerCase().includes(q) ||
-      log.details.toLowerCase().includes(q) ||
-      log.adminName.toLowerCase().includes(q) ||
-      log.adminEmail.toLowerCase().includes(q);
-    const matchesType = logTypeFilter === 'all' || log.type === logTypeFilter;
-    const matchesAdmin = logAdminFilter === 'all' || log.adminEmail === logAdminFilter;
+      (log?.action || '').toLowerCase().includes(q) ||
+      (log?.target || '').toLowerCase().includes(q) ||
+      (log?.details || '').toLowerCase().includes(q) ||
+      (log?.adminName || '').toLowerCase().includes(q) ||
+      (log?.adminEmail || '').toLowerCase().includes(q);
+    const matchesType = logTypeFilter === 'all' || log?.type === logTypeFilter;
+    const matchesAdmin = logAdminFilter === 'all' || log?.adminEmail === logAdminFilter;
     return matchesSearch && matchesType && matchesAdmin;
   }), [logs, logSearch, logTypeFilter, logAdminFilter]);
 
@@ -404,7 +404,7 @@ export default function AdminManagementPage() {
                       <div className="flex items-center gap-3">
                         <Avatar>
                           <AvatarFallback className="bg-primary/10 text-primary">
-                            {admin.name.charAt(0)}
+                            {(admin.name || '?').charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div>

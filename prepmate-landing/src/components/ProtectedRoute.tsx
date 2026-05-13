@@ -1,6 +1,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useLocation } from "react-router-dom";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -12,6 +13,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   requiredRole,
 }) => {
   const { user, isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
 
   // Show loading spinner while checking authentication
   if (isLoading) {
@@ -25,6 +27,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Redirect to login if not authenticated
   if (!isAuthenticated || !user) {
     return <Navigate to="/" replace />;
+  }
+
+  // Redirect to onboarding if profile is incomplete
+  if (!user.isProfileComplete && location.pathname !== "/onboarding") {
+    return <Navigate to="/onboarding" replace state={{ from: location.pathname }} />;
   }
 
   // Check role if required
@@ -45,6 +52,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
         return <Navigate to="/" replace />;
     }
   }
+
+  // Profile completion flow is handled inside the app; do not redirect to a separate page.
 
   return <>{children}</>;
 };

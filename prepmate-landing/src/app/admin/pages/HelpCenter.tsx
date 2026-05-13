@@ -152,20 +152,20 @@ export default function HelpCenterPage() {
   }, [tickets]);
 
   const filteredTickets = useMemo(() => {
-    return tickets.filter((ticket) => {
-      const q = searchQuery.toLowerCase();
+    return (tickets || []).filter((ticket) => {
+      const q = (searchQuery || '').toLowerCase();
       const matchesSearch =
         !q ||
-        ticket.id.toLowerCase().includes(q) ||
-        ticket.userEmail.toLowerCase().includes(q) ||
-        ticket.userName.toLowerCase().includes(q) ||
-        ticket.subject.toLowerCase().includes(q);
+        (ticket?.id || '').toLowerCase().includes(q) ||
+        (ticket?.userEmail || '').toLowerCase().includes(q) ||
+        (ticket?.userName || '').toLowerCase().includes(q) ||
+        (ticket?.subject || '').toLowerCase().includes(q);
 
-      const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
-      const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
+      const matchesStatus = statusFilter === 'all' || ticket?.status === statusFilter;
+      const matchesPriority = priorityFilter === 'all' || ticket?.priority === priorityFilter;
       const matchesAssignee =
         assigneeFilter === 'all' ||
-        (assigneeFilter === 'unassigned' ? !ticket.assignedToId : ticket.assignedToId === assigneeFilter);
+        (assigneeFilter === 'unassigned' ? !ticket?.assignedToId : ticket?.assignedToId === assigneeFilter);
 
       return matchesSearch && matchesStatus && matchesPriority && matchesAssignee;
     });

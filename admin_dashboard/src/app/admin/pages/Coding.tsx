@@ -132,9 +132,9 @@ export default function CodingPage() {
     const q = searchQuery.toLowerCase();
     const matchesSearch =
       !q ||
-      p.title.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q) ||
-      p.tags.some((t) => t.includes(q));
+      (p.title || '').toLowerCase().includes(q) ||
+      (p.category || '').toLowerCase().includes(q) ||
+      (p.tags || []).some((t) => (t || '').includes(q));
     const matchesDifficulty = difficultyFilter === 'all' || p.difficulty === difficultyFilter;
     const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
     return matchesSearch && matchesDifficulty && matchesStatus;
