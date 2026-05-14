@@ -32,6 +32,34 @@ const isBlockedBetweenUsers = async (userAId, userBId) => {
   );
 };
 
+const isMutualConnection = (userA, userB) => {
+  if (!userA || !userB) return false;
+  const userAId = userA._id?.toString();
+  const userBId = userB._id?.toString();
+
+  if (!userAId || !userBId) return false;
+
+  const aFriends =
+    hasUserId(userA.friends, userBId) ||
+    (hasUserId(userA.following, userBId) && hasUserId(userA.followers, userBId));
+
+  const bFriends =
+    hasUserId(userB.friends, userAId) ||
+    (hasUserId(userB.following, userAId) && hasUserId(userB.followers, userAId));
+
+  return aFriends || bFriends;
+};
+
+const canMessageUser = (sender, receiver) => {
+  const allowMessages =
+    receiver?.preferences?.privacy?.allowMessages || "everyone";
+
+  if (allowMessages === "everyone") return true;
+  if (allowMessages === "none") return false;
+
+  return isMutualConnection(sender, receiver);
+};
+
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
 // @desc    Get chat rooms for user
@@ -101,8 +129,22 @@ router.post("/room", authenticateToken, async (req, res) => {
       });
     }
 
-    // Check if participant exists
-    const participant = await User.findById(participantId);
+    const [currentUser, participant] = await Promise.all([
+      User.findById(userId).select(
+        "followers following friends preferences.privacy.allowMessages"
+      ),
+      User.findById(participantId).select(
+        "followers following friends preferences.privacy.allowMessages"
+      ),
+    ]);
+
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     if (!participant) {
       return res.status(404).json({
         success: false,
@@ -114,6 +156,13 @@ router.post("/room", authenticateToken, async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Cannot create chat because one of you has blocked the other",
+      });
+    }
+
+    if (!canMessageUser(currentUser, participant)) {
+      return res.status(403).json({
+        success: false,
+        message: "Messaging is restricted by user privacy settings",
       });
     }
 
@@ -174,7 +223,22 @@ router.post("/direct", authenticateToken, async (req, res) => {
       });
     }
 
-    const participant = await User.findById(participantId);
+    const [currentUser, participant] = await Promise.all([
+      User.findById(userId).select(
+        "followers following friends preferences.privacy.allowMessages"
+      ),
+      User.findById(participantId).select(
+        "followers following friends preferences.privacy.allowMessages"
+      ),
+    ]);
+
+    if (!currentUser) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     if (!participant) {
       return res.status(404).json({
         success: false,
@@ -186,6 +250,13 @@ router.post("/direct", authenticateToken, async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Cannot create chat because one of you has blocked the other",
+      });
+    }
+
+    if (!canMessageUser(currentUser, participant)) {
+      return res.status(403).json({
+        success: false,
+        message: "Messaging is restricted by user privacy settings",
       });
     }
 
@@ -365,6 +436,29 @@ router.post("/room/:roomId/messages", authenticateToken, async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Cannot send message because one of you has blocked the other",
+      });
+    }
+
+    const [currentUser, receiver] = await Promise.all([
+      User.findById(userId).select(
+        "followers following friends preferences.privacy.allowMessages"
+      ),
+      User.findById(receiverId).select(
+        "followers following friends preferences.privacy.allowMessages"
+      ),
+    ]);
+
+    if (!currentUser || !receiver) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (!canMessageUser(currentUser, receiver)) {
+      return res.status(403).json({
+        success: false,
+        message: "Messaging is restricted by user privacy settings",
       });
     }
 

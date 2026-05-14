@@ -32,6 +32,36 @@ class SocketHandler {
     );
   }
 
+  isMutualConnection(userA, userB) {
+    if (!userA || !userB) return false;
+    const userAId = userA._id?.toString();
+    const userBId = userB._id?.toString();
+
+    if (!userAId || !userBId) return false;
+
+    const aFriends =
+      this.hasUserId(userA.friends, userBId) ||
+      (this.hasUserId(userA.following, userBId) &&
+        this.hasUserId(userA.followers, userBId));
+
+    const bFriends =
+      this.hasUserId(userB.friends, userAId) ||
+      (this.hasUserId(userB.following, userAId) &&
+        this.hasUserId(userB.followers, userAId));
+
+    return aFriends || bFriends;
+  }
+
+  canMessageUser(sender, receiver) {
+    const allowMessages =
+      receiver?.preferences?.privacy?.allowMessages || "everyone";
+
+    if (allowMessages === "everyone") return true;
+    if (allowMessages === "none") return false;
+
+    return this.isMutualConnection(sender, receiver);
+  }
+
   // Initialize socket handler
   initialize(io) {
     this.io = io;
@@ -582,6 +612,27 @@ class SocketHandler {
         socket.emit("error", {
           message:
             "Cannot send message because one of you has blocked the other",
+        });
+        return;
+      }
+
+      const [senderUser, receiverUser] = await Promise.all([
+        User.findById(userId).select(
+          "followers following friends preferences.privacy.allowMessages"
+        ),
+        User.findById(receiverId).select(
+          "followers following friends preferences.privacy.allowMessages"
+        ),
+      ]);
+
+      if (!senderUser || !receiverUser) {
+        socket.emit("error", { message: "User not found" });
+        return;
+      }
+
+      if (!this.canMessageUser(senderUser, receiverUser)) {
+        socket.emit("error", {
+          message: "Messaging is restricted by user privacy settings",
         });
         return;
       }

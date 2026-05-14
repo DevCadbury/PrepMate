@@ -1307,65 +1307,67 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   const displayUser = viewingOtherUser ? otherUser : user;
   const isOwnProfile = !viewingOtherUser || isViewingSelfProfile;
 
-  const handleMessageUser = async () => {
+  const openChatWithUser = async (targetUserId: string, username?: string) => {
     if (!user?.id) return;
 
-    // Get the target user ID from the current context
-    const targetUserId = viewingOtherUser
-      ? otherUser?._id || otherUser?.id
-      : user.id;
-    if (!targetUserId) return;
+    if (targetUserId === user.id) {
+      warning("Action not allowed", "You cannot message yourself.");
+      return;
+    }
+
+    if (viewingOtherUser && (otherUser?._id || otherUser?.id) === targetUserId) {
+      if (!canMessage) {
+        warning(
+          "Messaging disabled",
+          "This user is not accepting new messages right now."
+        );
+        return;
+      }
+    }
 
     try {
-      // First, try to find an existing chat room with this user
-      const response = await apiClient.fetch("/chat/rooms", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      const response = await apiClient.fetch("/chat/direct", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ participantId: targetUserId }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const rooms = data.data.chatRooms || [];
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to open chat");
+      }
 
-        // Find existing direct chat room with this user
-        const existingRoom = rooms.find(
-          (room: any) =>
-            room.type === "direct" &&
-            room.participants.some((p: any) => p._id === targetUserId)
-        );
-
-        if (existingRoom) {
-          // Navigate to existing chat room
-          navigate(`/chat/${existingRoom._id}`);
-        } else {
-          // Create a new direct chat room
-          const createResponse = await apiClient.fetch(
-            "/chat/direct",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-              },
-              body: JSON.stringify({
-                participantId: targetUserId,
-              }),
-            }
-          );
-
-          if (createResponse.ok) {
-            const createData = await createResponse.json();
-            navigate(`/chat/${createData.data.chatRoom._id}`);
-          } else {
-            throw new Error("Failed to create chat room");
-          }
-        }
+      const roomId = payload?.data?.chatRoom?._id;
+      if (roomId) {
+        navigate(`/chat/${roomId}`);
       } else {
-        throw new Error("Failed to fetch chat rooms");
+        throw new Error("Chat room not available");
       }
     } catch (err: any) {
       console.error("Error navigating to chat:", err);
-      error("Failed to open chat", "Please try again.");
+      error(
+        "Failed to open chat",
+        err?.message || `Unable to message ${username || "user"}.`
+      );
     }
+  };
+
+  const handleMessageUser = async () => {
+    if (!user?.id) return;
+
+    const targetUserId = viewingOtherUser
+      ? otherUser?._id || otherUser?.id
+      : null;
+
+    if (!targetUserId) {
+      warning("No target user", "Select a user to start messaging.");
+      return;
+    }
+
+    await openChatWithUser(targetUserId, otherUser?.username || otherUser?.name);
   };
 
   const handleSaveProfile = async () => {
@@ -1743,16 +1745,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
   };
 
   // Function to handle messaging a user from dialogs
-  const handleMessageUserFromDialog = (
+  const handleMessageUserFromDialog = async (
     targetUserId: string,
     username?: string
   ) => {
-    // For now, just show a success message
-    // This can be expanded to open a chat or navigate to messaging
-    success(
-      "Message feature",
-      `Message feature for ${username || "user"} will be implemented soon!`
-    );
+    await openChatWithUser(targetUserId, username);
   };
 
   // Function to handle follow/unfollow from the followers/following dialogs
@@ -1867,7 +1864,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ username }) => {
                        {followLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : isFollowing ? <UserMinus className="w-4 h-4 mr-2" /> : <UserPlus className="w-4 h-4 mr-2" />}
                        {followLoading ? "Loading..." : isFollowing ? "Following" : followRequestSent ? "Request Sent" : "Follow"}
                      </Button>
-                     <Button variant="outline" onClick={() => setCanMessage(true)} className="font-bold rounded-xl shadow-sm border-border hover:bg-accent/50 text-xs md:text-sm h-9 md:h-10 px-4 transition-all">
+                     <Button
+                       variant="outline"
+                       onClick={handleMessageUser}
+                       className="font-bold rounded-xl shadow-sm border-border hover:bg-accent/50 text-xs md:text-sm h-9 md:h-10 px-4 transition-all"
+                     >
                        <MessageSquare className="w-4 h-4 mr-2" /> Message
                      </Button>
                    </>
