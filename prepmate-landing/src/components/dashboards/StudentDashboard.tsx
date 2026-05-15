@@ -626,6 +626,12 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
       return date.toLocaleDateString();
     };
 
+    const user = notification.user;
+
+    if (!user) {
+      return null;
+    }
+
     return (
       <div
         className={`group relative p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-all duration-200 ${!notification.read ? "bg-blue-50/50" : ""
@@ -643,16 +649,16 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
 
         <div className="flex items-start gap-3">
           <Avatar className="h-8 w-8 flex-shrink-0 ring-1 ring-gray-200">
-            <AvatarImage src={notification.user.profilePicture} />
+            <AvatarImage src={user.profilePicture} />
             <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs">
-              {notification.user.name?.charAt(0)?.toUpperCase()}
+              {user.name?.charAt(0)?.toUpperCase() || "?"}
             </AvatarFallback>
           </Avatar>
 
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-900 truncate">
-                {notification.user.name}
+                {user.name || "Unknown User"}
               </span>
               <span className="text-xs text-gray-500">
                 {formatTimeAgo(notification.createdAt)}
