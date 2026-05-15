@@ -416,6 +416,17 @@ const StudentDashboard: React.FC<StudentDashboardProps> = ({ onLogout }) => {
     }
   }, []);
 
+  // Poll for notifications every 30 seconds
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const interval = setInterval(() => {
+      void fetchNotifications({ force: true });
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [user?.id, fetchNotifications]);
+
   const handleNotificationsOpenChange = useCallback(
     (open: boolean) => {
       setShowNotifications(open);
